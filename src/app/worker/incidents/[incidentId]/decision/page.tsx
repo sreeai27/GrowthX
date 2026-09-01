@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 
 import type { WorkerPolicyDecisionView } from "../../../../../services/providers/worker-policy-decision";
-import { getPolicyDecisionForWorker } from "../../actions";
+import {
+  createCustomerConfirmationAction,
+  getPolicyDecisionForWorker,
+} from "../../actions";
 
 const outcomeCopy = {
   INCLUDED_CONTINUE: {
@@ -61,7 +64,13 @@ function money(minor: number, currency: string) {
   }).format(minor / 100);
 }
 
-function DecisionPageContent({ decision }: { decision: WorkerPolicyDecisionView }) {
+function DecisionPageContent({
+  decision,
+  incidentId,
+}: {
+  decision: WorkerPolicyDecisionView;
+  incidentId: string;
+}) {
   const state = decision.outcome.decisionState;
   const copy = state
     ? outcomeCopy[state]
@@ -187,18 +196,31 @@ function DecisionPageContent({ decision }: { decision: WorkerPolicyDecisionView 
           <p className="eyebrow">Safe next step · सुरक्षित अगला कदम</p>
           <h2 id="next-step-heading">Choose only from allowed actions</h2>
           <p lang="hi">केवल अनुमत कार्रवाई चुनें</p>
-          {decision.outcome.allowedActions.map((action, index) => (
-            <div className="future-action" key={action}>
-              <button
-                className={index === 0 ? "button button-teal" : "secondary-button"}
-                disabled
-                type="button"
-              >
-                {actionCopy[action]}
-              </button>
-              <small>Available next · अगले चरण में उपलब्ध</small>
-            </div>
-          ))}
+          {decision.outcome.allowedActions.map((action, index) => {
+            const canSend = action === "REQUEST_CUSTOMER_APPROVAL";
+            return canSend ? (
+              <form action={createCustomerConfirmationAction} key={action}>
+                <input name="incidentKey" type="hidden" value={incidentId} />
+                <button
+                  className={index === 0 ? "button button-teal" : "secondary-button"}
+                  type="submit"
+                >
+                  {actionCopy[action]}
+                </button>
+              </form>
+            ) : (
+              <div className="future-action" key={action}>
+                <button
+                  className={index === 0 ? "button button-teal" : "secondary-button"}
+                  disabled
+                  type="button"
+                >
+                  {actionCopy[action]}
+                </button>
+                <small>Available next · अगले चरण में उपलब्ध</small>
+              </div>
+            );
+          })}
         </section>
       </article>
     </main>
@@ -213,5 +235,5 @@ export default async function DecisionPage({
   const { incidentId } = await params;
   const decision = await getPolicyDecisionForWorker(incidentId);
   if (!decision) redirect(`/worker/incidents/${incidentId}/interpretation`);
-  return <DecisionPageContent decision={decision} />;
+  return <DecisionPageContent decision={decision} incidentId={incidentId} />;
 }

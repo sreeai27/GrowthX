@@ -1,13 +1,16 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { readBrowserCredential } from "../../demo/session";
 import { hashDemoToken } from "../../../domain/demo-session";
 import { getIncidentGateway } from "../../../services/providers/incident-gateway";
+import { getCustomerConfirmationGateway } from "../../../services/providers/customer-confirmation";
+import { env } from "../../../config/env";
 
 async function requireAccess() {
   const credential = await readBrowserCredential();
@@ -19,6 +22,7 @@ async function requireAccess() {
 }
 
 const incidentKeySchema = z.string().regex(/^inc_[A-Za-z0-9_-]{8,}$/);
+const confirmationTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const typedInputSchema = z.object({
   incidentKey: incidentKeySchema,
   modality: z.literal("TEXT"),
@@ -116,6 +120,110 @@ export async function retryPolicyDecisionAction(formData: FormData) {
   const access = await requireAccess();
   await getIncidentGateway().resolveDecision({ ...access, incidentKey });
   redirect(`/worker/incidents/${incidentKey}/decision`);
+}
+
+function confirmationCookieName(incidentKey: string) {
+  return `hunar_confirmation_${createHmac("sha256", "cookie-name")
+    .update(incidentKey)
+    .digest("hex")
+    .slice(0, 16)}`;
+}
+
+function confirmationCookieSignature(payload: string) {
+  const secret = env.server.demoSessionCookieSecret;
+  if (!secret || secret.length < 32) {
+    throw new Error(
+      "DEMO_SESSION_COOKIE_SECRET must contain at least 32 characters.",
+    );
+  }
+  return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+async function storeConfirmationToken(
+  incidentKey: string,
+  publicRunId: string,
+  rawToken: string,
+) {
+  const payload = `${incidentKey}.${publicRunId}.${rawToken}`;
+  const cookieStore = await cookies();
+  cookieStore.set(
+    confirmationCookieName(incidentKey),
+    `${payload}.${confirmationCookieSignature(payload)}`,
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: `/worker/incidents/${incidentKey}`,
+      maxAge: 30 * 60,
+    },
+  );
+}
+
+async function readConfirmationToken(
+  incidentKey: string,
+  publicRunId: string,
+): Promise<string | null> {
+  const value = (await cookies()).get(confirmationCookieName(incidentKey))?.value;
+  if (!value) return null;
+  const parts = value.split(".");
+  if (parts.length !== 4) return null;
+  const [storedIncidentKey, storedRunId, rawToken, signature] = parts;
+  if (
+    storedIncidentKey !== incidentKey ||
+    storedRunId !== publicRunId ||
+    !rawToken ||
+    !signature ||
+    !confirmationTokenSchema.safeParse(rawToken).success
+  ) {
+    return null;
+  }
+  const payload = `${storedIncidentKey}.${storedRunId}.${rawToken}`;
+  const supplied = Buffer.from(signature, "base64url");
+  const expected = Buffer.from(confirmationCookieSignature(payload), "base64url");
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected)
+    ? rawToken
+    : null;
+}
+
+export async function createCustomerConfirmationAction(formData: FormData) {
+  const { incidentKey } = z
+    .object({ incidentKey: incidentKeySchema })
+    .parse(Object.fromEntries(formData));
+  const access = await requireAccess();
+  const gateway = getCustomerConfirmationGateway();
+  const existing = await gateway.getWorkerConfirmation({ ...access, incidentKey });
+  const existingToken = await readConfirmationToken(incidentKey, access.publicRunId);
+  if (existing && existingToken) {
+    redirect(`/worker/incidents/${incidentKey}/status`);
+  }
+
+  const rawToken = randomBytes(32).toString("base64url");
+  const result = await gateway.createConfirmation({
+    ...access,
+    incidentKey,
+    tokenHash: hashDemoToken(rawToken),
+    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+  });
+  if (result.created) {
+    await storeConfirmationToken(incidentKey, access.publicRunId, rawToken);
+  }
+  redirect(`/worker/incidents/${incidentKey}/status`);
+}
+
+export async function getCustomerConfirmationForWorker(incidentKey: string) {
+  const parsedKey = incidentKeySchema.safeParse(incidentKey);
+  if (!parsedKey.success) return null;
+  const access = await requireAccess();
+  const confirmation = await getCustomerConfirmationGateway().getWorkerConfirmation({
+    ...access,
+    incidentKey: parsedKey.data,
+  });
+  if (!confirmation) return null;
+  const rawToken = await readConfirmationToken(parsedKey.data, access.publicRunId);
+  return {
+    confirmation,
+    rawToken,
+  };
 }
 
 export async function reviseTranscriptAction(formData: FormData) {

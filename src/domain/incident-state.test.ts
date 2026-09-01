@@ -57,6 +57,30 @@ describe("transitionIncident", () => {
       auditEvent: "policy_resolved",
     },
     {
+      current: "DECISION_READY",
+      event: { type: "SEND_TO_CUSTOMER" },
+      nextStatus: "AWAITING_CUSTOMER",
+      auditEvent: "sent_to_customer",
+    },
+    {
+      current: "AWAITING_CUSTOMER",
+      event: { type: "CUSTOMER_APPROVES" },
+      nextStatus: "ACTION_AUTHORISED",
+      auditEvent: "customer_approved",
+    },
+    {
+      current: "AWAITING_CUSTOMER",
+      event: { type: "CUSTOMER_DECLINES" },
+      nextStatus: "COMPLETION_PENDING",
+      auditEvent: "customer_declined",
+    },
+    {
+      current: "AWAITING_CUSTOMER",
+      event: { type: "CUSTOMER_REPORTS_MISMATCH" },
+      nextStatus: "AWAITING_HUMAN_REVIEW",
+      auditEvent: "customer_reported_mismatch",
+    },
+    {
       current: "TRANSCRIPT_READY",
       event: { type: "RETRY_INPUT" },
       nextStatus: "DRAFT",
@@ -105,5 +129,16 @@ describe("transitionIncident", () => {
     expect(() =>
       transitionIncident("TASK_CONFIRMATION_REQUIRED", { type: "RESOLVE_POLICY" }, {}),
     ).toThrow("Cannot apply RESOLVE_POLICY while incident is TASK_CONFIRMATION_REQUIRED.");
+  });
+
+  it.each([
+    ["DRAFT", "SEND_TO_CUSTOMER"],
+    ["DECISION_READY", "CUSTOMER_APPROVES"],
+    ["ACTION_AUTHORISED", "CUSTOMER_DECLINES"],
+    ["COMPLETION_PENDING", "CUSTOMER_REPORTS_MISMATCH"],
+  ] as const)("rejects %s -> %s", (current, type) => {
+    expect(() =>
+      transitionIncident(current, { type }, {}),
+    ).toThrow(InvalidIncidentTransitionError);
   });
 });

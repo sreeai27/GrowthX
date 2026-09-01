@@ -56,7 +56,7 @@ export async function appendIncidentTrace(
     incident: any;
     runId: any;
     stage: string;
-    actor: "WORKER" | "SYSTEM";
+    actor: "WORKER" | "SYSTEM" | "CUSTOMER";
     inputSummary: string;
     outputSummary: string;
     sourceIds?: string[];

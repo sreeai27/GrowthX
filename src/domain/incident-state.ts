@@ -6,6 +6,9 @@ export type IncidentStatus =
   | "TASK_CONFIRMATION_REQUIRED"
   | "TASK_CONFIRMED"
   | "DECISION_READY"
+  | "AWAITING_CUSTOMER"
+  | "ACTION_AUTHORISED"
+  | "COMPLETION_PENDING"
   | "AWAITING_HUMAN_REVIEW";
 
 export type IncidentEvent =
@@ -18,7 +21,11 @@ export type IncidentEvent =
   | { readonly type: "OFFER_CANDIDATES" }
   | { readonly type: "ABSTAIN_TO_REVIEW" }
   | { readonly type: "CONFIRM_TASK" }
-  | { readonly type: "RESOLVE_POLICY" };
+  | { readonly type: "RESOLVE_POLICY" }
+  | { readonly type: "SEND_TO_CUSTOMER" }
+  | { readonly type: "CUSTOMER_APPROVES" }
+  | { readonly type: "CUSTOMER_DECLINES" }
+  | { readonly type: "CUSTOMER_REPORTS_MISMATCH" };
 
 export interface TransitionContext {
   readonly hasConfirmedTranscript?: boolean;
@@ -35,7 +42,11 @@ export interface TransitionResult {
     | "task_candidates_offered"
     | "human_review_requested"
     | "task_confirmed"
-    | "policy_resolved";
+    | "policy_resolved"
+    | "sent_to_customer"
+    | "customer_approved"
+    | "customer_declined"
+    | "customer_reported_mismatch";
 }
 
 export class InvalidIncidentTransitionError extends Error {
@@ -109,6 +120,31 @@ export function transitionIncident(
         return { nextStatus: "DECISION_READY", auditEvent: "policy_resolved" };
       break;
     case "DECISION_READY":
+      if (event.type === "SEND_TO_CUSTOMER")
+        return {
+          nextStatus: "AWAITING_CUSTOMER",
+          auditEvent: "sent_to_customer",
+        };
+      break;
+    case "AWAITING_CUSTOMER":
+      if (event.type === "CUSTOMER_APPROVES")
+        return {
+          nextStatus: "ACTION_AUTHORISED",
+          auditEvent: "customer_approved",
+        };
+      if (event.type === "CUSTOMER_DECLINES")
+        return {
+          nextStatus: "COMPLETION_PENDING",
+          auditEvent: "customer_declined",
+        };
+      if (event.type === "CUSTOMER_REPORTS_MISMATCH")
+        return {
+          nextStatus: "AWAITING_HUMAN_REVIEW",
+          auditEvent: "customer_reported_mismatch",
+        };
+      break;
+    case "ACTION_AUTHORISED":
+    case "COMPLETION_PENDING":
     case "AWAITING_HUMAN_REVIEW":
       break;
     default:

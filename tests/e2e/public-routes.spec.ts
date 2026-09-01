@@ -1,4 +1,38 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+
+const confirmationStorePath = ".demo-fixture/e2e-runs.json.confirmations";
+
+async function changeFixtureConfirmation(
+  rawToken: string,
+  update: (request: Record<string, unknown>) => void,
+) {
+  const store = JSON.parse(await readFile(confirmationStorePath, "utf8")) as {
+    requests: Record<string, unknown>[];
+  };
+  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+  const request = store.requests.find((candidate) => candidate.tokenHash === tokenHash);
+  if (!request) throw new Error("Expected the fixture confirmation request.");
+  update(request);
+  await writeFile(confirmationStorePath, JSON.stringify(store), "utf8");
+}
+
+async function createBalconyConfirmationLink(page: Page) {
+  await page.goto("/demo");
+  await page.getByRole("button", { name: /Start as worker/i }).click();
+  await page.getByRole("button", { name: /Report a customer-requested change/i }).click();
+  await page.getByRole("textbox", { name: /Customer request/i }).fill("Balcony ko deep clean karna hai");
+  await page.getByRole("button", { name: /Review request/i }).click();
+  await page.getByRole("button", { name: /Yes, continue/i }).click();
+  await page.getByRole("button", { name: /Select this/i }).click();
+  await expect(page).toHaveURL(/\/decision$/, { timeout: 20_000 });
+  await page.getByRole("button", { name: /Send for customer approval/i }).click();
+  await expect(page).toHaveURL(/\/status$/, { timeout: 20_000 });
+  const href = await page.getByRole("link", { name: /Open customer link/i }).getAttribute("href");
+  if (!href) throw new Error("Expected one customer confirmation link.");
+  return href;
+}
 
 test("root redirects to the operator shell", async ({ request }) => {
   const response = await request.get("/", { maxRedirects: 0 });
@@ -21,6 +55,7 @@ test("guided demo resumes for 24 hours and revokes the abandoned browser token",
   page,
   context,
 }) => {
+  test.setTimeout(90_000);
   await page.goto("/demo");
   await page.getByRole("button", { name: "Start as worker" }).click();
   await expect(page).toHaveURL(/\/worker\/bookings\/DEMO-4821$/, {
@@ -30,7 +65,9 @@ test("guided demo resumes for 24 hours and revokes the abandoned browser token",
     page.getByRole("heading", { name: "Essential Home Cleaning" }),
   ).toBeVisible();
 
-  const [firstCookie] = await context.cookies();
+  const firstCookie = (await context.cookies()).find(
+    (cookie) => cookie.name === "hunar_demo_session",
+  );
   expect(firstCookie).toMatchObject({
     name: "hunar_demo_session",
     httpOnly: true,
@@ -51,7 +88,9 @@ test("guided demo resumes for 24 hours and revokes the abandoned browser token",
   await expect(page).toHaveURL(/\/worker\/bookings\/DEMO-4821$/, {
     timeout: 20_000,
   });
-  const [replacementCookie] = await context.cookies();
+  const replacementCookie = (await context.cookies()).find(
+    (cookie) => cookie.name === "hunar_demo_session",
+  );
   expect(replacementCookie?.value).not.toBe(firstCookie?.value);
 
   if (!firstCookie) throw new Error("Expected the first private demo cookie.");
@@ -174,7 +213,7 @@ for (const viewport of [
     const approval = page.getByRole("button", {
       name: /Send for customer approval/i,
     });
-    await expect(approval).toBeDisabled();
+    await expect(approval).toBeEnabled();
     await expect(page.getByText(/Available next/i).first()).toBeVisible();
     await expect(page.getByText(/fictional demo data/i)).toBeVisible();
     expect(
@@ -189,6 +228,194 @@ for (const viewport of [
     ).toBeGreaterThanOrEqual(48);
   });
 }
+
+test("customer confirmation keeps one frozen decision from worker link to approval", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const worker = await browser.newContext();
+  const workerPage = await worker.newPage();
+  await workerPage.setViewportSize({ width: 360, height: 800 });
+  await workerPage.goto("/demo");
+  await workerPage.getByRole("button", { name: /Start as worker/i }).click();
+  await workerPage
+    .getByRole("button", { name: /Report a customer-requested change/i })
+    .click();
+  await workerPage
+    .getByRole("textbox", { name: /Customer request/i })
+    .fill("Balcony ko deep clean karna hai");
+  await workerPage.getByRole("button", { name: /Review request/i }).click();
+  await workerPage.getByRole("button", { name: /Yes, continue/i }).click();
+  await workerPage.getByRole("button", { name: /Select this/i }).click();
+  await expect(workerPage).toHaveURL(/\/decision$/, { timeout: 20_000 });
+
+  const send = workerPage.getByRole("button", {
+    name: /Send for customer approval/i,
+  });
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(workerPage).toHaveURL(/\/status$/, { timeout: 20_000 });
+  const customerUrl = await workerPage
+    .getByRole("link", { name: /Open customer link/i })
+    .getAttribute("href");
+  expect(customerUrl).toMatch(/^\/confirm\/[A-Za-z0-9_-]{43}$/);
+  const copyLink = workerPage.getByRole("button", {
+    name: /Copy customer link/i,
+  });
+  await copyLink.focus();
+  await expect(copyLink).toBeFocused();
+  expect(
+    await copyLink.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeGreaterThanOrEqual(48);
+  await copyLink.click();
+  await expect(workerPage.getByText(/Link copied|Could not copy/i)).toBeVisible();
+
+  const customer = await browser.newContext();
+  const customerPage = await customer.newPage();
+  await customerPage.setViewportSize({ width: 360, height: 800 });
+  await customerPage.goto(customerUrl!);
+  await expect(customerPage.getByText("Essential Home Cleaning")).toBeVisible();
+  await expect(
+    customerPage.getByRole("heading", { name: "Balcony deep cleaning" }),
+  ).toBeVisible();
+  await expect(customerPage.getByText("₹299", { exact: true })).toBeVisible();
+  await expect(customerPage.getByText("25 minutes", { exact: true })).toBeVisible();
+  await expect(
+    customerPage.getByRole("heading", {
+      name: /Sahaay Home Services Demonstration Task and Add-on Policy/i,
+    }),
+  ).toBeVisible();
+  const confirmRequest = customerPage.getByRole("button", {
+    name: /Yes, this is my request/i,
+  });
+  await confirmRequest.focus();
+  await expect(confirmRequest).toBeFocused();
+  expect(
+    await confirmRequest.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeGreaterThanOrEqual(48);
+  expect(
+    await customerPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await customerPage.screenshot({
+    path: "test-results/customer-confirm-mobile.png",
+    fullPage: true,
+  });
+  await customerPage.setViewportSize({ width: 1280, height: 800 });
+  expect(
+    await customerPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await customerPage.screenshot({
+    path: "test-results/customer-confirm-desktop.png",
+    fullPage: true,
+  });
+  await confirmRequest.click();
+  await expect(
+    customerPage.getByRole("button", { name: /Approve ₹299/i }),
+  ).toBeVisible();
+  await workerPage.reload();
+  await expect(
+    workerPage.getByRole("heading", { name: /Request confirmed/i }),
+  ).toBeVisible();
+  await customerPage.getByRole("button", { name: /Approve ₹299/i }).click();
+  await expect(
+    customerPage.getByRole("heading", { name: /Change approved/i }),
+  ).toBeVisible();
+  await customerPage.reload();
+  await expect(
+    customerPage.getByRole("heading", { name: /Change approved/i }),
+  ).toBeVisible();
+  await expect(customerPage.getByRole("button")).toHaveCount(0);
+
+  const statusUrl = workerPage.url();
+  const outsiderPage = await customer.newPage();
+  await outsiderPage.goto(statusUrl);
+  await expect(outsiderPage).toHaveURL(/\/demo$/);
+
+  await workerPage.reload();
+  await expect(
+    workerPage.getByRole("heading", { name: /Customer approved/i }),
+  ).toBeVisible();
+  expect(
+    await customerPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  const openLink = workerPage.getByRole("link", { name: /Open customer link/i });
+  if (await openLink.count()) {
+    await openLink.focus();
+    await expect(openLink).toBeFocused();
+    expect(await openLink.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(48);
+  }
+  await customer.close();
+  await worker.close();
+});
+
+test("customer confirmation renders invalid, mismatch and decline as distinct terminal outcomes", async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const invalid = await browser.newPage();
+  await invalid.goto("/confirm/not-a-real-token");
+  await expect(invalid.getByRole("heading", { name: /link is not valid/i })).toBeVisible();
+  await invalid.close();
+
+  for (const outcome of ["mismatch", "decline"] as const) {
+    const worker = await browser.newContext();
+    const workerPage = await worker.newPage();
+    const customerUrl = await createBalconyConfirmationLink(workerPage);
+    const customer = await browser.newContext();
+    const customerPage = await customer.newPage();
+    await customerPage.goto(customerUrl);
+    if (outcome === "mismatch") {
+      await customerPage.getByRole("button", { name: /does not match/i }).click();
+      await expect(customerPage.getByRole("heading", { name: /Request does not match/i })).toBeVisible();
+      await workerPage.reload();
+      await expect(workerPage.getByRole("heading", { name: /Request does not match/i })).toBeVisible();
+    } else {
+      await customerPage.getByRole("button", { name: /Yes, this is my request/i }).click();
+      await customerPage.getByRole("button", { name: /Decline change/i }).click();
+      await expect(customerPage.getByRole("heading", { name: /Change declined/i })).toBeVisible();
+      await workerPage.reload();
+      await expect(workerPage.getByRole("heading", { name: /Customer declined/i })).toBeVisible();
+      await expect(
+        workerPage.getByRole("link", { name: /Continue original booking/i }),
+      ).toBeVisible();
+    }
+    await customer.close();
+    await worker.close();
+  }
+});
+
+test("customer confirmation safely shows expired and stale links", async ({ browser }) => {
+  test.setTimeout(120_000);
+  for (const state of ["expired", "stale"] as const) {
+    const worker = await browser.newContext();
+    const workerPage = await worker.newPage();
+    const customerUrl = await createBalconyConfirmationLink(workerPage);
+    const rawToken = customerUrl.split("/").at(-1);
+    if (!rawToken) throw new Error("Expected a route token.");
+    await changeFixtureConfirmation(rawToken, (request) => {
+      if (state === "expired") request.expiresAt = "2026-01-01T00:00:00.000Z";
+      else request.decisionHash = "changed-after-link-created";
+    });
+
+    const customer = await browser.newContext();
+    const customerPage = await customer.newPage();
+    await customerPage.goto(customerUrl);
+    await expect(
+      customerPage.getByRole("heading", {
+        name: state === "expired" ? /link has expired/i : /work details changed/i,
+      }),
+    ).toBeVisible();
+    await expect(customerPage.getByRole("button")).toHaveCount(0);
+    await customer.close();
+    await worker.close();
+  }
+});
 
 const viewports = [
   { name: "mobile", width: 360, height: 800 },

@@ -143,6 +143,9 @@ export default defineSchema({
       v.literal("TASK_CONFIRMATION_REQUIRED"),
       v.literal("TASK_CONFIRMED"),
       v.literal("DECISION_READY"),
+      v.literal("AWAITING_CUSTOMER"),
+      v.literal("ACTION_AUTHORISED"),
+      v.literal("COMPLETION_PENDING"),
       v.literal("AWAITING_HUMAN_REVIEW"),
     ),
     riskTier: v.number(),
@@ -291,4 +294,55 @@ export default defineSchema({
   })
     .index("by_tenant_incident", ["tenantId", "incidentId"])
     .index("by_tenant_decision_hash", ["tenantId", "decisionHash"]),
+  confirmationRequests: defineTable({
+    tenantId: v.string(),
+    incidentId: v.id("incidents"),
+    decisionId: v.id("policyDecisions"),
+    tokenHash: v.string(),
+    expiresAt: v.string(),
+    status: v.union(
+      v.literal("PENDING"),
+      v.literal("APPROVED"),
+      v.literal("DECLINED"),
+      v.literal("REQUEST_MISMATCH"),
+      v.literal("EXPIRED"),
+      v.literal("REVOKED"),
+      v.literal("STALE"),
+    ),
+    requestSnapshot: v.object({
+      bookingKey: v.string(),
+      serviceName: v.string(),
+      includedTasks: v.array(
+        v.object({ taskId: v.string(), displayName: v.string() }),
+      ),
+      resultingTasks: v.array(
+        v.object({ taskId: v.string(), displayName: v.string() }),
+      ),
+      taskId: v.string(),
+      taskDisplayName: v.string(),
+      decisionState: v.literal("ADD_ON_APPROVAL_REQUIRED"),
+      durationDeltaMinutes: v.number(),
+      priceDeltaMinor: v.number(),
+      currency: v.string(),
+      removableTaskIds: v.array(v.string()),
+      sourceKey: v.string(),
+      sourceTitle: v.string(),
+      sourceVersion: v.string(),
+    }),
+    requestConfirmedByCustomer: v.boolean(),
+    requestConfirmedAt: v.optional(v.string()),
+    commercialResponse: v.optional(
+      v.union(v.literal("APPROVE"), v.literal("DECLINE")),
+    ),
+    respondedAt: v.optional(v.string()),
+    bookingVersion: v.number(),
+    decisionHash: v.string(),
+    sourceVersion: v.string(),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_tenant_token_hash", ["tenantId", "tokenHash"])
+    .index("by_tenant_incident", ["tenantId", "incidentId"])
+    .index("by_tenant_decision", ["tenantId", "decisionId"])
+    .index("by_expiry_status", ["expiresAt", "status"]),
 });
