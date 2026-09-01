@@ -347,6 +347,189 @@ button:focus-visible {
   margin: 0.3rem 0 0;
   font-weight: 700;
 }
+.incident-shell {
+  min-height: 100svh;
+  padding: 0 1.25rem 4rem;
+  border-top: 6px solid var(--saathi-teal);
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0 31px,
+      rgb(233 168 43 / 0.14) 31px 33px,
+      transparent 33px
+    ),
+    var(--warm-paper);
+}
+.incident-topbar {
+  min-height: 4.5rem;
+  max-width: 46rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 auto;
+  border-bottom: 1px solid var(--line);
+}
+.incident-step {
+  color: var(--muted-ink);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.incident-panel {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: clamp(2.5rem, 8vw, 5rem) 0 0;
+}
+.incident-panel h1 {
+  max-width: 15ch;
+  font-size: clamp(2.5rem, 9vw, 4.6rem);
+}
+.incident-panel h2 {
+  font-family: "Anek Devanagari", "Noto Sans Devanagari", sans-serif;
+  font-size: 1.35rem;
+}
+.incident-assurance,
+.quality-state {
+  max-width: 38rem;
+  margin: 1.5rem 0;
+  padding: 0.9rem 1rem;
+  border-left: 4px solid var(--marigold);
+  background: rgb(233 168 43 / 0.1);
+  color: var(--muted-ink);
+  line-height: 1.55;
+}
+.quality-state {
+  display: inline-flex;
+  margin-bottom: 0;
+  border-left-color: var(--saathi-teal);
+  background: #eaf4f1;
+  color: var(--saathi-teal);
+  font-weight: 700;
+}
+.incident-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+.incident-form label {
+  font-weight: 750;
+}
+.incident-form textarea {
+  width: 100%;
+  min-height: 9rem;
+  padding: 1rem;
+  border: 1px solid #9fb5b1;
+  border-radius: 12px;
+  background: #f3f6f4;
+  color: var(--work-ink);
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+.incident-form textarea:focus {
+  outline: 3px solid var(--marigold);
+  outline-offset: 3px;
+}
+.incident-form .button,
+.candidate-card .button,
+.booking-card form .button {
+  width: 100%;
+  min-height: 3.25rem;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.preset-stack,
+.candidate-stack {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 2.5rem;
+}
+.preset-card {
+  width: 100%;
+  min-height: 4.5rem;
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+  border: 1px solid rgb(15 118 110 / 0.24);
+  border-radius: 16px;
+  background: var(--paper-raised);
+  color: var(--work-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(11 31 42 / 0.05);
+}
+.preset-card span,
+.candidate-card p,
+.confirmed-task-card p,
+.review-card p {
+  color: var(--muted-ink);
+  line-height: 1.5;
+}
+.preset-card:active,
+.button:active,
+.secondary-button:active {
+  transform: scale(0.97);
+}
+.confirmed-words {
+  margin: 2rem 0;
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: #f3f6f4;
+}
+.confirmed-words span {
+  color: var(--muted-ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.confirmed-words p {
+  margin: 0.6rem 0 0;
+  font-size: 1.15rem;
+  line-height: 1.55;
+}
+.candidate-card,
+.review-card,
+.confirmed-task-card {
+  padding: 1.25rem;
+  border-radius: 20px;
+  background: var(--paper-raised);
+  box-shadow:
+    0 0 0 1px rgb(11 31 42 / 0.07),
+    0 8px 24px rgb(15 118 110 / 0.08);
+}
+.candidate-card h2 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+.candidate-card .button {
+  margin-top: 1rem;
+}
+.review-card {
+  border-left: 5px solid var(--marigold);
+}
+.confirmed-task-card {
+  display: grid;
+  grid-template-columns: 1.25rem 1fr;
+  gap: 1rem;
+  background: #eaf4f1;
+}
+.confirmed-task-card .proof-node {
+  margin-top: 0.15rem;
+  border-color: #eaf4f1;
+}
+.incident-panel > .text-link {
+  margin-top: 1.5rem;
+}
+.link-button {
+  border: 0;
+  background: transparent;
+  color: var(--saathi-teal);
+  font: inherit;
+  cursor: pointer;
+}
 @media (max-width: 760px) {
   .operator-hero,
   .worker-hero {

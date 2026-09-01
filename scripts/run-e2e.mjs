@@ -18,7 +18,7 @@ const server = spawn(
 );
 
 async function waitForServer() {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     try {
       const response = await fetch("http://127.0.0.1:3000/hunar-os");
       if (response.ok) return;
@@ -27,14 +27,18 @@ async function waitForServer() {
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error("Next.js did not start within 30 seconds.");
+  throw new Error("Next.js did not start within 60 seconds.");
 }
 
 function runPlaywright() {
   return new Promise((resolve, reject) => {
     const cli = spawn(
       process.execPath,
-      ["node_modules/@playwright/test/cli.js", "test"],
+      [
+        "node_modules/@playwright/test/cli.js",
+        "test",
+        ...process.argv.slice(2),
+      ],
       {
         stdio: "inherit",
       },

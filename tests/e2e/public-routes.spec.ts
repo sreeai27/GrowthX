@@ -63,6 +63,67 @@ test("guided demo resumes for 24 hours and revokes the abandoned browser token",
   await expect(page.getByText("Continue your demo")).not.toBeVisible();
 });
 
+test("worker captures, confirms and selects a bounded typed request across refresh", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  const worker = await browser.newContext();
+  const page = await worker.newPage();
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/demo");
+  await page.getByRole("button", { name: /Start as worker/i }).click();
+  await page
+    .getByRole("button", { name: /Report a customer-requested change/i })
+    .click();
+
+  await page
+    .getByRole("textbox", { name: /Customer request/i })
+    .fill("Balcony ko deep clean karna hai");
+  await page.getByRole("button", { name: /Review request/i }).click();
+  await expect(page).toHaveURL(/\/transcript$/, { timeout: 20_000 });
+  await page.reload();
+  await expect(
+    page.getByRole("textbox", { name: /Confirmed wording/i }),
+  ).toHaveValue("Balcony ko deep clean karna hai");
+  const incidentKey = new URL(page.url()).pathname.split("/")[3];
+  await page.getByRole("button", { name: /Try again/i }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/worker/incidents/${incidentKey}/capture$`),
+  );
+  await page
+    .getByRole("textbox", { name: /Customer request/i })
+    .fill("Balcony ko deep clean karna hai");
+  await page.getByRole("button", { name: /Review request/i }).click();
+  await expect(page).toHaveURL(/\/transcript$/, { timeout: 20_000 });
+  await page
+    .getByRole("textbox", { name: /Confirmed wording/i })
+    .fill("Balcony ko achchhe se deep clean karna hai");
+  await page.getByRole("button", { name: /Yes, continue/i }).click();
+  await expect(page).toHaveURL(/\/interpretation$/, { timeout: 20_000 });
+  await expect(page.getByText("Balcony deep cleaning")).toBeVisible();
+
+  const incidentUrl = page.url();
+  const outsider = await browser.newContext();
+  const outsiderPage = await outsider.newPage();
+  await outsiderPage.goto(incidentUrl);
+  await expect(outsiderPage).toHaveURL(/\/demo$/);
+  await outsider.close();
+
+  await page.getByRole("button", { name: /Select this/i }).click();
+  await expect(page.getByText(/Task confirmed/i)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Task confirmed/i)).toBeVisible();
+
+  const [oldCookie] = await worker.cookies();
+  if (!oldCookie) throw new Error("Expected the private demo cookie.");
+  await page.goto("/demo");
+  await page.getByRole("button", { name: "Start a new demo" }).click();
+  await worker.addCookies([oldCookie]);
+  await page.goto(incidentUrl);
+  await expect(page).toHaveURL(/\/demo$/);
+  await worker.close();
+});
+
 const viewports = [
   { name: "mobile", width: 360, height: 800 },
   { name: "desktop", width: 1280, height: 800 },

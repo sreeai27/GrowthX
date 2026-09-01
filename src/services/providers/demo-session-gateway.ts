@@ -145,7 +145,16 @@ function fileGateway(storePath: string): DemoSessionGateway {
       encoding: "utf8",
       mode: 0o600,
     });
-    await rename(temporaryPath, absolutePath);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await rename(temporaryPath, absolutePath);
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "EPERM" || attempt === 4) throw error;
+        await new Promise((resolveRetry) => setTimeout(resolveRetry, 20));
+      }
+    }
   }
   return {
     async start(input) {

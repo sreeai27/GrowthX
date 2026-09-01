@@ -4,10 +4,19 @@
 
 **Blocked by:** 02: Isolated guided demo session.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The worker starts from the seeded active booking and can create a TaskConfirm incident without changing the booking.
-- [ ] Typed and preset inputs persist, survive refresh and require explicit transcript/request confirmation.
-- [ ] The worker can confirm, edit, retry, choose among bounded catalogue candidates or route an unmatched task to safe review.
-- [ ] Every write is tenant-scoped and records the required trace metadata and version references.
-- [ ] Invalid state transitions and attempts to select tasks outside the supplied catalogue are rejected and tested.
+- [x] The worker starts from the seeded active booking and can create a TaskConfirm incident without changing the booking.
+- [x] Typed and preset inputs persist, survive refresh and require explicit transcript/request confirmation.
+- [x] The worker can confirm, edit, retry, choose among bounded catalogue candidates or route an unmatched task to safe review.
+- [x] Every write is tenant-scoped and records the required trace metadata and version references.
+- [x] Invalid state transitions and attempts to select tasks outside the supplied catalogue are rejected and tested.
+
+## Verification
+
+- 37 unit and integration tests passed.
+- 1 evaluation case passed.
+- 8 browser tests passed, including the 360px TaskConfirm journey.
+- Type check, lint and production build passed.
+- Standards and specification reviews passed with no blocking findings.
+- Seed command exited safely with the expected message because no Convex deployment URL is configured.

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { getActiveDemoRun } from "../../../demo/session";
+import { startTaskConfirmAction } from "../../incidents/actions";
 
 const hindiBookingCopy: Record<string, string> = {
   "Essential Home Cleaning": "ज़रूरी घर की सफ़ाई",
@@ -72,6 +73,11 @@ export default async function BookingPage({
         <p className="hindi-copy" lang="hi">
           यह डेमो बुकिंग 24 घंटे तक इसी ब्राउज़र में जारी रहेगी।
         </p>
+        <form action={startTaskConfirmAction}>
+          <button className="button button-teal" type="submit">
+            Report a customer-requested change · ग्राहक का नया अनुरोध बताएँ
+          </button>
+        </form>
         <Link className="text-link" href="/demo">
           Back to demo choices · डेमो विकल्पों पर वापस जाएँ
         </Link>
