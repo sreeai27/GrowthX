@@ -51,6 +51,12 @@ describe("transitionIncident", () => {
       auditEvent: "task_confirmed",
     },
     {
+      current: "TASK_CONFIRMED",
+      event: { type: "RESOLVE_POLICY" },
+      nextStatus: "DECISION_READY",
+      auditEvent: "policy_resolved",
+    },
+    {
       current: "TRANSCRIPT_READY",
       event: { type: "RETRY_INPUT" },
       nextStatus: "DRAFT",
@@ -93,5 +99,11 @@ describe("transitionIncident", () => {
     expect(() =>
       transitionIncident("DRAFT", { type: "CONFIRM_TASK" }, {}),
     ).toThrow("Cannot apply CONFIRM_TASK while incident is DRAFT.");
+  });
+
+  it("rejects policy resolution before task confirmation", () => {
+    expect(() =>
+      transitionIncident("TASK_CONFIRMATION_REQUIRED", { type: "RESOLVE_POLICY" }, {}),
+    ).toThrow("Cannot apply RESOLVE_POLICY while incident is TASK_CONFIRMATION_REQUIRED.");
   });
 });

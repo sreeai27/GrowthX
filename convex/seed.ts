@@ -2,6 +2,7 @@ import { mutation } from "./_generated/server";
 import {
   demoBooking,
   demoPolicyRules,
+  demoPolicyPassages,
   demoPolicySource,
   demoTasks,
   demoTenant,
@@ -85,6 +86,27 @@ export const seedDemo = mutation({
     else {
       await context.db.insert("policySources", demoPolicySource);
       inserted = true;
+    }
+
+    for (const passage of demoPolicyPassages) {
+      const existing = await context.db
+        .query("policyPassages")
+        .withIndex("by_tenant_source_passage", (query) =>
+          query.eq("tenantId", passage.tenantId),
+        )
+        .filter((query) =>
+          query.and(
+            query.eq(query.field("sourceKey"), passage.sourceKey),
+            query.eq(query.field("sourceVersion"), passage.sourceVersion),
+            query.eq(query.field("passageKey"), passage.passageKey),
+          ),
+        )
+        .unique();
+      if (existing) await context.db.patch(existing._id, passage);
+      else {
+        await context.db.insert("policyPassages", passage);
+        inserted = true;
+      }
     }
 
     for (const rule of demoPolicyRules) {

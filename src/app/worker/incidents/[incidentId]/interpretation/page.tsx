@@ -5,6 +5,7 @@ import {
   getIncidentForWorker,
   prepareCandidatesAction,
   requestTaskReviewAction,
+  retryPolicyDecisionAction,
   reviseTranscriptAction,
 } from "../../actions";
 
@@ -20,6 +21,8 @@ export default async function InterpretationPage({
     redirect(`/worker/incidents/${incidentId}/capture`);
   if (incident.status === "TRANSCRIPT_READY")
     redirect(`/worker/incidents/${incidentId}/transcript`);
+  if (incident.status === "DECISION_READY")
+    redirect(`/worker/incidents/${incidentId}/decision`);
 
   return (
     <main className="incident-shell">
@@ -75,6 +78,12 @@ export default async function InterpretationPage({
                 No policy decision has been made yet. · नीति का फैसला अभी नहीं
                 हुआ है।
               </p>
+              <form action={retryPolicyDecisionAction}>
+                <input type="hidden" name="incidentKey" value={incidentId} />
+                <button className="button button-teal" type="submit">
+                  Find the policy decision · नीति का फैसला खोजें
+                </button>
+              </form>
             </div>
           </div>
         ) : (

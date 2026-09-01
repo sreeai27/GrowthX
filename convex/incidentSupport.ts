@@ -73,7 +73,8 @@ export async function appendIncidentTrace(
     )
     .collect();
   const sequence =
-    Math.max(0, ...steps.map((step: { sequence: number }) => step.sequence)) + 1;
+    Math.max(0, ...steps.map((step: { sequence: number }) => step.sequence)) +
+    1;
   await context.db.insert("traceSteps", {
     tenantId: DEMO_TENANT_ID,
     incidentId: input.incident._id,

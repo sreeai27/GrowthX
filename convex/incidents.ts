@@ -21,7 +21,6 @@ const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const RUN_ID_PATTERN = /^run_[A-Za-z0-9_-]{8,}$/;
 const INCIDENT_KEY_PATTERN = /^inc_[A-Za-z0-9_-]{8,}$/;
 
-
 export const startTaskConfirm = mutation({
   args: {
     publicRunId: v.string(),
@@ -238,9 +237,7 @@ export const confirmTranscript = mutation({
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .collect();
     const transcript = transcripts.at(-1);
     if (!transcript) throw new ConvexError("Transcript is unavailable.");
@@ -297,9 +294,7 @@ export const getWorkerIncident = query({
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .collect();
     const transcript = transcripts.at(-1);
     const confirmations = await context.db
@@ -307,9 +302,7 @@ export const getWorkerIncident = query({
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .collect();
     const confirmation = confirmations.at(-1);
     const interpretations = await context.db
@@ -317,9 +310,7 @@ export const getWorkerIncident = query({
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .collect();
     const interpretation = interpretations.at(-1);
     const taskConfirmation = await context.db
@@ -327,18 +318,14 @@ export const getWorkerIncident = query({
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .unique();
     const review = await context.db
       .query("humanReviews")
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .unique();
     return {
       incidentKey: incident.incidentKey,
@@ -370,9 +357,7 @@ export const prepareTaskCandidates = mutation({
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .collect();
     const confirmation = confirmations.at(-1);
     if (!confirmation) throw new ConvexError("Confirmed wording is required.");
@@ -517,9 +502,7 @@ export const requestTaskReview = mutation({
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .collect();
     const confirmedText = confirmations.at(-1)?.confirmedText;
     if (!confirmedText) throw new ConvexError("Confirmed wording is required.");
@@ -568,9 +551,7 @@ export const confirmTask = mutation({
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .collect();
     const interpretation = interpretations.at(-1);
     const confirmations = await context.db
@@ -578,9 +559,7 @@ export const confirmTask = mutation({
       .withIndex("by_tenant_incident", (range) =>
         range.eq("tenantId", DEMO_TENANT_ID),
       )
-      .filter((filter) =>
-        filter.eq(filter.field("incidentId"), incident._id),
-      )
+      .filter((filter) => filter.eq(filter.field("incidentId"), incident._id))
       .collect();
     const confirmation = confirmations.at(-1);
     const activeTask = await context.db

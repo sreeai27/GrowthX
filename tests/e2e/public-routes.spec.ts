@@ -110,6 +110,7 @@ test("worker captures, confirms and selects a bounded typed request across refre
   await outsider.close();
 
   await page.getByRole("button", { name: /Select this/i }).click();
+  await expect(page).toHaveURL(/\/decision$/, { timeout: 20_000 });
   await expect(page.getByText(/Task confirmed/i)).toBeVisible();
   await page.reload();
   await expect(page.getByText(/Task confirmed/i)).toBeVisible();
@@ -123,6 +124,71 @@ test("worker captures, confirms and selects a bounded typed request across refre
   await expect(page).toHaveURL(/\/demo$/);
   await worker.close();
 });
+
+for (const viewport of [
+  { name: "mobile", width: 360, height: 800 },
+  { name: "desktop", width: 1280, height: 800 },
+] as const) {
+  test(`policy decision shows inline evidence on ${viewport.name}`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(viewport);
+    await page.goto("/demo");
+    await page.getByRole("button", { name: /Start as worker/i }).click();
+    await page
+      .getByRole("button", { name: /Report a customer-requested change/i })
+      .click();
+    await page
+      .getByRole("textbox", { name: /Customer request/i })
+      .fill("Balcony ko deep clean karna hai");
+    await page.getByRole("button", { name: /Review request/i }).click();
+    await page.getByRole("button", { name: /Yes, continue/i }).click();
+    await page
+      .getByRole("button", { name: /Select this/i })
+      .click();
+
+    await expect(page).toHaveURL(/\/decision$/, { timeout: 20_000 });
+    await expect(
+      page.getByRole("heading", { name: /Customer approval needed/i }),
+    ).toBeVisible();
+    await expect(page.getByText("Essential Home Cleaning")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Balcony deep cleaning" }),
+    ).toBeVisible();
+    await expect(page.getByText("25 minutes", { exact: true })).toBeVisible();
+    await expect(page.getByText("₹299", { exact: true })).toBeVisible();
+    await expect(page.getByText("SUPPORTED", { exact: true })).toBeVisible();
+    await expect(page.getByText("Customer", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Fictional Sahaay/i)).toBeVisible();
+    await expect(page.getByText(/Version/i)).toBeVisible();
+    await expect(page.getByText(/Effective/i)).toBeVisible();
+
+    const source = page.getByRole("group", { name: /policy source/i });
+    const disclosure = source.locator("summary");
+    await disclosure.focus();
+    await expect(disclosure).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(source.getByText(/optional add-on/i)).toBeVisible();
+
+    const approval = page.getByRole("button", {
+      name: /Send for customer approval/i,
+    });
+    await expect(approval).toBeDisabled();
+    await expect(page.getByText(/Available next/i).first()).toBeVisible();
+    await expect(page.getByText(/fictional demo data/i)).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await approval.evaluate(
+        (element) => element.getBoundingClientRect().height,
+      ),
+    ).toBeGreaterThanOrEqual(48);
+  });
+}
 
 const viewports = [
   { name: "mobile", width: 360, height: 800 },

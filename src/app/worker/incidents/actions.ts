@@ -102,7 +102,20 @@ export async function confirmTaskAction(formData: FormData) {
     .parse(Object.fromEntries(formData));
   const access = await requireAccess();
   await getIncidentGateway().confirmTask({ ...access, ...input });
-  redirect(`/worker/incidents/${input.incidentKey}/interpretation`);
+  await getIncidentGateway().resolveDecision({
+    ...access,
+    incidentKey: input.incidentKey,
+  });
+  redirect(`/worker/incidents/${input.incidentKey}/decision`);
+}
+
+export async function retryPolicyDecisionAction(formData: FormData) {
+  const { incidentKey } = z
+    .object({ incidentKey: incidentKeySchema })
+    .parse(Object.fromEntries(formData));
+  const access = await requireAccess();
+  await getIncidentGateway().resolveDecision({ ...access, incidentKey });
+  redirect(`/worker/incidents/${incidentKey}/decision`);
 }
 
 export async function reviseTranscriptAction(formData: FormData) {
@@ -128,4 +141,14 @@ export async function getIncidentForWorker(incidentKey: string) {
   if (!parsedKey.success) return null;
   const access = await requireAccess();
   return getIncidentGateway().get({ ...access, incidentKey: parsedKey.data });
+}
+
+export async function getPolicyDecisionForWorker(incidentKey: string) {
+  const parsedKey = incidentKeySchema.safeParse(incidentKey);
+  if (!parsedKey.success) return null;
+  const access = await requireAccess();
+  return getIncidentGateway().getDecision({
+    ...access,
+    incidentKey: parsedKey.data,
+  });
 }

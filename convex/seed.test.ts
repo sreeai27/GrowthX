@@ -24,6 +24,7 @@ describe("seedDemo", () => {
       bookings: await context.db.query("bookings").collect(),
       tasks: await context.db.query("taskCatalog").collect(),
       sources: await context.db.query("policySources").collect(),
+      passages: await context.db.query("policyPassages").collect(),
       rules: await context.db.query("policyRules").collect(),
     }));
 
@@ -43,9 +44,34 @@ describe("seedDemo", () => {
       expect.objectContaining({
         sourceKey: "taskconfirm-demo-policy",
         version: "v1",
+        effectiveFrom: "2026-08-31T00:00:00.000Z",
+        notice: "Fictional demonstration policy; not a real operator policy.",
       }),
     ]);
+    expect(seeded.passages).toHaveLength(5);
+    expect(seeded.passages.map(({ passageKey }) => passageKey)).toEqual([
+      "included-standard-bathroom",
+      "balcony-deep-clean-add-on",
+      "cabinet-clean-tradeoff",
+      "wardrobe-not-supported",
+      "exposed-wire-escalation",
+    ]);
     expect(seeded.rules).toHaveLength(5);
+    expect(seeded.rules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleKey: "balcony-deep-clean-add-on",
+          ruleVersion: "v1",
+          sourceVersion: "v1",
+          passageKey: "balcony-deep-clean-add-on",
+          effectiveFrom: "2026-08-31T00:00:00.000Z",
+          effectiveTo: null,
+          priority: 100,
+          priceDeltaMinor: 29_900,
+          durationDeltaMinutes: 25,
+        }),
+      ]),
+    );
   });
 
   it("repairs a partial seed when the tenant already exists", async () => {

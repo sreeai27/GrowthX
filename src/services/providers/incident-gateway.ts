@@ -19,7 +19,25 @@ import {
   normaliseWorkerText,
   resolveReviewedPreset,
 } from "../../domain/incident-input";
+import {
+  orchestratePolicyDecision,
+  policyOutcome,
+} from "../../domain/policy-orchestration";
+import {
+  demoBooking,
+  demoPolicyPassages,
+  demoPolicyRules,
+  demoPolicySource,
+  demoTasks,
+} from "../../../convex/fixtures";
 import { getDemoSessionGateway } from "./demo-session-gateway";
+import {
+  workerPolicyDecisionViewSchema,
+  type WorkerPolicyDecisionView,
+} from "./worker-policy-decision";
+
+export { workerPolicyDecisionViewSchema } from "./worker-policy-decision";
+export type { WorkerPolicyDecisionView } from "./worker-policy-decision";
 
 const candidateSchema = z.object({
   taskId: z.string(),
@@ -36,6 +54,7 @@ export const workerIncidentViewSchema = z.object({
     "TRANSCRIPT_CONFIRMED",
     "TASK_CONFIRMATION_REQUIRED",
     "TASK_CONFIRMED",
+    "DECISION_READY",
     "AWAITING_HUMAN_REVIEW",
   ]),
   originalText: z.string().nullable(),
@@ -62,6 +81,26 @@ const reviewResultSchema = z.object({ status: z.literal("AWAITING_HUMAN_REVIEW")
 const taskConfirmedSchema = z.object({
   status: z.literal("TASK_CONFIRMED"),
   selectedTaskId: z.string(),
+});
+const decisionResolutionSchema = z.object({
+  status: z.enum(["DECISION_READY", "AWAITING_HUMAN_REVIEW"]),
+  supportState: z.enum([
+    "SUPPORTED",
+    "CANNOT_VERIFY",
+    "SOURCE_CONFLICT",
+    "ESCALATED",
+  ]),
+  decisionState: z
+    .enum([
+      "INCLUDED_CONTINUE",
+      "ADD_ON_APPROVAL_REQUIRED",
+      "TRADE_OFF_REQUIRED",
+      "NOT_SUPPORTED",
+      "SAFETY_ESCALATION",
+    ])
+    .optional(),
+  taskId: z.string().min(1),
+  decisionHash: z.string().min(1),
 });
 
 interface Access extends Record<string, Value> {
@@ -101,6 +140,8 @@ export interface IncidentGateway {
   confirmTask(
     input: IncidentAccess & { selectedTaskId: string },
   ): Promise<{ status: "TASK_CONFIRMED"; selectedTaskId: string }>;
+  resolveDecision(input: IncidentAccess): Promise<z.infer<typeof decisionResolutionSchema>>;
+  getDecision(input: IncidentAccess): Promise<WorkerPolicyDecisionView | null>;
   get(input: IncidentAccess): Promise<WorkerIncidentView | null>;
 }
 
@@ -152,6 +193,16 @@ const getRef = makeFunctionReference<
   IncidentAccess,
   WorkerIncidentView | null
 >("incidents:getWorkerIncident");
+const resolveDecisionRef = makeFunctionReference<
+  "mutation",
+  IncidentAccess,
+  z.infer<typeof decisionResolutionSchema>
+>("policyDecisions:resolvePolicyDecision");
+const getDecisionRef = makeFunctionReference<
+  "query",
+  IncidentAccess,
+  WorkerPolicyDecisionView | null
+>("policyDecisions:getPolicyDecision");
 
 function convexGateway(url: string): IncidentGateway {
   const client = new ConvexHttpClient(url);
@@ -182,6 +233,15 @@ function convexGateway(url: string): IncidentGateway {
     async confirmTask(input) {
       return taskConfirmedSchema.parse(await client.mutation(confirmTaskRef, input));
     },
+    async resolveDecision(input) {
+      return decisionResolutionSchema.parse(
+        await client.mutation(resolveDecisionRef, input),
+      );
+    },
+    async getDecision(input) {
+      const value = await client.query(getDecisionRef, input);
+      return value === null ? null : workerPolicyDecisionViewSchema.parse(value);
+    },
     async get(input) {
       const value = await client.query(getRef, input);
       return value === null ? null : workerIncidentViewSchema.parse(value);
@@ -191,6 +251,7 @@ function convexGateway(url: string): IncidentGateway {
 
 const fixtureIncidentSchema = workerIncidentViewSchema.extend({
   publicRunId: z.string(),
+  policyDecision: workerPolicyDecisionViewSchema.nullable().optional(),
 });
 const fixtureSchema = z.object({ incidents: z.array(fixtureIncidentSchema) });
 type FixtureStore = z.infer<typeof fixtureSchema>;
@@ -412,6 +473,110 @@ function fixtureGateway(path: string): IncidentGateway {
       incident.status = transition.nextStatus;
       await write(store);
       return { status: "TASK_CONFIRMED", selectedTaskId: input.selectedTaskId };
+    },
+    async resolveDecision(input) {
+      const store = await read();
+      const incident = await owned(store, input);
+      if (!incident?.selectedTaskId)
+        throw new Error("Confirmed task is unavailable.");
+      if (incident.policyDecision) {
+        return decisionResolutionSchema.parse({
+          status: incident.policyDecision.status,
+          supportState: incident.policyDecision.outcome.supportState,
+          decisionState: incident.policyDecision.outcome.decisionState,
+          taskId: incident.policyDecision.selectedTask.taskId,
+          decisionHash: incident.policyDecision.decisionHash,
+        });
+      }
+      transitionIncident(incident.status, { type: "RESOLVE_POLICY" }, {});
+      const selectedTask = demoTasks.find(
+        (task) => task.taskId === incident.selectedTaskId,
+      );
+      if (!selectedTask) throw new Error("Confirmed task is unavailable.");
+      const now = new Date().toISOString();
+      const orchestration = orchestratePolicyDecision({
+        currentTime: now,
+        bookingVersion: demoBooking.version,
+        booking: demoBooking,
+        selectedTask,
+        sources: [demoPolicySource],
+        rules: demoPolicyRules.map((rule) => ({
+          ...rule,
+          version: rule.ruleVersion,
+        })),
+      });
+      const { result, supported, decisionHash, status } = orchestration;
+      const rule = supported
+        ? demoPolicyRules.find(
+            (candidate) =>
+              candidate.ruleKey === result.ruleKey &&
+              candidate.ruleVersion === result.ruleVersion,
+          )
+        : undefined;
+      const passage = rule
+        ? demoPolicyPassages.find(
+            (candidate) => candidate.passageKey === rule.passageKey,
+          )
+        : undefined;
+      const outcome = policyOutcome(orchestration);
+      const decision = workerPolicyDecisionViewSchema.parse({
+        incidentKey: incident.incidentKey,
+        status,
+        booking: {
+          bookingKey: demoBooking.bookingKey,
+          bookingVersion: demoBooking.version,
+          serviceName: demoBooking.serviceName,
+          scheduledDurationMinutes: demoBooking.scheduledDurationMinutes,
+          remainingDurationMinutes: demoBooking.remainingDurationMinutes,
+          catalogVersion: demoBooking.catalogVersion,
+          includedTasks: demoTasks
+            .filter((task) => demoBooking.includedTaskIds.includes(task.taskId))
+            .map(({ taskId, displayName }) => ({ taskId, displayName })),
+        },
+        selectedTask: {
+          taskId: selectedTask.taskId,
+          displayName: selectedTask.displayName,
+          catalogVersion: selectedTask.catalogVersion,
+        },
+        outcome,
+        authority: supported
+          ? {
+              sourceKey: demoPolicySource.sourceKey,
+              title: demoPolicySource.title,
+              owner: demoPolicySource.owner,
+              version: demoPolicySource.version,
+              effectiveFrom: demoPolicySource.effectiveFrom,
+              notice: demoPolicySource.notice,
+              ruleKey: result.ruleKey,
+              ruleVersion: result.ruleVersion,
+              passage: passage
+                ? {
+                    passageKey: passage.passageKey,
+                    heading: passage.heading,
+                    text: passage.text,
+                  }
+                : null,
+            }
+          : null,
+        decisionHash,
+        createdAt: now,
+      });
+      incident.status = status;
+      incident.policyDecision = decision;
+      await write(store);
+      return decisionResolutionSchema.parse({
+        status,
+        supportState: result.supportState,
+        decisionState: supported ? result.decisionState : undefined,
+        taskId: selectedTask.taskId,
+        decisionHash,
+      });
+    },
+    async getDecision(input) {
+      const incident = await owned(await read(), input);
+      return incident?.policyDecision
+        ? workerPolicyDecisionViewSchema.parse(incident.policyDecision)
+        : null;
     },
     async get(input) {
       const incident = await owned(await read(), input);

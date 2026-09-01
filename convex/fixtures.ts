@@ -27,8 +27,10 @@ export const demoBooking = {
   serviceName: "Essential Home Cleaning",
   status: "IN_PROGRESS" as const,
   city: "Mumbai",
+  workerRole: "cleaning_specialist",
   currency: "INR" as const,
   scheduledDurationMinutes: 60,
+  remainingDurationMinutes: 40,
   version: 1,
   includedTaskIds: [
     "kitchen_surface_cleaning",
@@ -125,26 +127,78 @@ export const demoPolicySource = {
   version: "v1",
   status: "ACTIVE" as const,
   effectiveFrom: "2026-08-31T00:00:00.000Z",
+  effectiveTo: null,
+  priority: 100,
   regionTags: ["Mumbai"],
   roleTags: ["cleaning_specialist"],
   notice: "Fictional demonstration policy; not a real operator policy.",
 };
 
+export const demoPolicyPassages = [
+  [
+    "included-standard-bathroom",
+    "Included work",
+    "One standard bathroom is included in the Essential Home Cleaning booking.",
+  ],
+  [
+    "balcony-deep-clean-add-on",
+    "Balcony add-on",
+    "Balcony deep cleaning is an optional add-on requiring customer approval. It adds 25 minutes and costs ₹299.",
+  ],
+  [
+    "cabinet-clean-tradeoff",
+    "Task trade-off",
+    "Inside-cabinet cleaning may replace standard floor cleaning when the customer confirms the trade-off.",
+  ],
+  [
+    "wardrobe-not-supported",
+    "Unsupported task",
+    "Wardrobe assembly is not provided under Essential Home Cleaning.",
+  ],
+  [
+    "exposed-wire-escalation",
+    "Electrical safety",
+    "Stop affected work near an exposed live wire and contact a supervisor for safety review.",
+  ],
+].map(([passageKey, heading, text], sectionOrder) => ({
+  tenantId: DEMO_TENANT_ID,
+  sourceKey: demoPolicySource.sourceKey,
+  sourceVersion: demoPolicySource.version,
+  passageKey: passageKey!,
+  heading: heading!,
+  text: text!,
+  sectionOrder,
+  createdAt: "2026-08-31T00:00:00.000Z",
+}));
+
 const baseRule = {
   tenantId: DEMO_TENANT_ID,
   sourceKey: demoPolicySource.sourceKey,
   sourceVersion: demoPolicySource.version,
+  ruleVersion: "v1",
+  catalogVersion: demoBooking.catalogVersion,
+  currency: demoBooking.currency,
+  active: true,
+  effectiveFrom: demoPolicySource.effectiveFrom,
+  effectiveTo: null,
+  priority: 100,
   serviceId: demoBooking.serviceId,
   requiresCustomerRequestConfirmation: true,
   requiresCustomerCommercialApproval: false,
   requiresHumanReview: false,
+  requiresWorkerFeasibilityConfirmation: false,
+  roleTags: ["cleaning_specialist"],
+  regionTags: ["Mumbai"],
+  specificity: 2,
   removableTaskIds: [] as string[],
+  prohibitedActions: ["CANCEL_BOOKING"],
 };
 
 export const demoPolicyRules = [
   {
     ...baseRule,
     ruleKey: "included-standard-bathroom",
+    passageKey: "included-standard-bathroom",
     taskId: "bathroom_cleaning_standard_1",
     decisionState: "INCLUDED_CONTINUE" as const,
     durationDeltaMinutes: 0,
@@ -154,6 +208,7 @@ export const demoPolicyRules = [
   {
     ...baseRule,
     ruleKey: "balcony-deep-clean-add-on",
+    passageKey: "balcony-deep-clean-add-on",
     taskId: "balcony_deep_cleaning",
     decisionState: "ADD_ON_APPROVAL_REQUIRED" as const,
     durationDeltaMinutes: 25,
@@ -163,15 +218,18 @@ export const demoPolicyRules = [
   {
     ...baseRule,
     ruleKey: "cabinet-clean-tradeoff",
+    passageKey: "cabinet-clean-tradeoff",
     taskId: "inside_cabinet_cleaning",
     decisionState: "TRADE_OFF_REQUIRED" as const,
     durationDeltaMinutes: 0,
     priceDeltaMinor: 0,
     removableTaskIds: ["floor_cleaning_standard"],
+    requiresWorkerFeasibilityConfirmation: true,
   },
   {
     ...baseRule,
     ruleKey: "wardrobe-not-supported",
+    passageKey: "wardrobe-not-supported",
     taskId: "wardrobe_assembly",
     decisionState: "NOT_SUPPORTED" as const,
     durationDeltaMinutes: 0,
@@ -180,6 +238,7 @@ export const demoPolicyRules = [
   {
     ...baseRule,
     ruleKey: "exposed-wire-escalation",
+    passageKey: "exposed-wire-escalation",
     taskId: "exposed_live_wire_response",
     decisionState: "SAFETY_ESCALATION" as const,
     durationDeltaMinutes: 0,

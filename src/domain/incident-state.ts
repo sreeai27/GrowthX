@@ -5,6 +5,7 @@ export type IncidentStatus =
   | "TRANSCRIPT_CONFIRMED"
   | "TASK_CONFIRMATION_REQUIRED"
   | "TASK_CONFIRMED"
+  | "DECISION_READY"
   | "AWAITING_HUMAN_REVIEW";
 
 export type IncidentEvent =
@@ -16,7 +17,8 @@ export type IncidentEvent =
   | { readonly type: "REQUEST_TASK_REVIEW" }
   | { readonly type: "OFFER_CANDIDATES" }
   | { readonly type: "ABSTAIN_TO_REVIEW" }
-  | { readonly type: "CONFIRM_TASK" };
+  | { readonly type: "CONFIRM_TASK" }
+  | { readonly type: "RESOLVE_POLICY" };
 
 export interface TransitionContext {
   readonly hasConfirmedTranscript?: boolean;
@@ -32,7 +34,8 @@ export interface TransitionResult {
     | "transcript_revision_requested"
     | "task_candidates_offered"
     | "human_review_requested"
-    | "task_confirmed";
+    | "task_confirmed"
+    | "policy_resolved";
 }
 
 export class InvalidIncidentTransitionError extends Error {
@@ -102,6 +105,10 @@ export function transitionIncident(
         return { nextStatus: "TASK_CONFIRMED", auditEvent: "task_confirmed" };
       break;
     case "TASK_CONFIRMED":
+      if (event.type === "RESOLVE_POLICY")
+        return { nextStatus: "DECISION_READY", auditEvent: "policy_resolved" };
+      break;
+    case "DECISION_READY":
     case "AWAITING_HUMAN_REVIEW":
       break;
     default:
