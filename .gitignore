@@ -1,5 +1,6 @@
 node_modules/
 .codex-tools/
+.demo-fixture/
 .next/
 test-results/
 playwright-report/

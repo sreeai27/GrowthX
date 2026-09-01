@@ -14,8 +14,11 @@ const environmentSchema = z.object({
   NEXT_PUBLIC_CONVEX_URL: optionalUrl,
   OPENAI_API_KEY: optionalSecret,
   SARVAM_API_KEY: optionalSecret,
+  DEMO_SESSION_COOKIE_SECRET: optionalSecret,
   FEATURE_VOICE_CAPTURE: z.enum(["true", "false"]).default("false"),
   FEATURE_OPENAI_MAPPING: z.enum(["true", "false"]).default("false"),
+  FEATURE_FIXTURE_MODE: z.enum(["true", "false"]).default("false"),
+  DEMO_FIXTURE_STORE_PATH: optionalSecret,
 });
 
 export function parseEnvironment(input: Record<string, string | undefined>) {
@@ -28,11 +31,16 @@ export function parseEnvironment(input: Record<string, string | undefined>) {
     server: {
       ...(parsed.OPENAI_API_KEY ? { openAiApiKey: parsed.OPENAI_API_KEY } : {}),
       ...(parsed.SARVAM_API_KEY ? { sarvamApiKey: parsed.SARVAM_API_KEY } : {}),
+      ...(parsed.DEMO_SESSION_COOKIE_SECRET
+        ? { demoSessionCookieSecret: parsed.DEMO_SESSION_COOKIE_SECRET }
+        : {}),
     },
     features: {
       voiceCapture: parsed.FEATURE_VOICE_CAPTURE === "true",
       openAiMapping: parsed.FEATURE_OPENAI_MAPPING === "true",
+      fixtureMode: parsed.FEATURE_FIXTURE_MODE === "true",
     },
+    fixtureStorePath: parsed.DEMO_FIXTURE_STORE_PATH,
   };
 }
 

@@ -17,6 +17,52 @@ test("public audience shells render", async ({ request }) => {
   expect(await worker.text()).toContain("जब काम बदलता है");
 });
 
+test("guided demo resumes for 24 hours and revokes the abandoned browser token", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/demo");
+  await page.getByRole("button", { name: "Start as worker" }).click();
+  await expect(page).toHaveURL(/\/worker\/bookings\/DEMO-4821$/, {
+    timeout: 20_000,
+  });
+  await expect(
+    page.getByRole("heading", { name: "Essential Home Cleaning" }),
+  ).toBeVisible();
+
+  const [firstCookie] = await context.cookies();
+  expect(firstCookie).toMatchObject({
+    name: "hunar_demo_session",
+    httpOnly: true,
+    sameSite: "Lax",
+  });
+  expect(firstCookie?.expires ?? 0).toBeGreaterThan(
+    Date.now() / 1_000 + 23 * 60 * 60,
+  );
+
+  await page.reload();
+  await expect(page.getByText("DEMO-4821")).toBeVisible();
+  await page.goto("/demo");
+  await expect(
+    page.getByRole("link", { name: "Continue your demo" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Start a new demo" }).click();
+  await expect(page).toHaveURL(/\/worker\/bookings\/DEMO-4821$/, {
+    timeout: 20_000,
+  });
+  const [replacementCookie] = await context.cookies();
+  expect(replacementCookie?.value).not.toBe(firstCookie?.value);
+
+  if (!firstCookie) throw new Error("Expected the first private demo cookie.");
+  await context.addCookies([firstCookie]);
+  await page.goto("/demo");
+  await expect(
+    page.getByRole("button", { name: "Start as worker" }),
+  ).toBeVisible();
+  await expect(page.getByText("Continue your demo")).not.toBeVisible();
+});
+
 const viewports = [
   { name: "mobile", width: 360, height: 800 },
   { name: "desktop", width: 1280, height: 800 },

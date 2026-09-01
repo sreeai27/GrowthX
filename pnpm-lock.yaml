@@ -63,6 +63,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.1.5
         version: 19.2.5(@types/react@19.2.18)
+      convex-test:
+        specifier: ^0.0.38
+        version: 0.0.38(convex@1.45.0(react@19.2.8))
       eslint:
         specifier: ^9.27.0
         version: 9.39.5(jiti@2.7.0)
@@ -1439,6 +1442,11 @@ packages:
 
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
+
+  convex-test@0.0.38:
+    resolution: {integrity: sha512-1o/3GvUR9gMLjiqq7SxchI/0OYQaWwbQC4INmB1SNt1WLBjUgEM8+brgpqrZwJ+Vb1DdGZokCVeihwT5IPk49w==}
+    peerDependencies:
+      convex: ^1.16.4
 
   convex@1.45.0:
     resolution: {integrity: sha512-AV3B56Ptu/14d76g3urBJ50dwpiZa6uJaLT84OWox5aCwZIJiuAamdjv3lLHDzs8vv5kC31anEZohhUe3qJ2bA==}
@@ -4026,6 +4034,10 @@ snapshots:
       delayed-stream: 1.0.0
 
   concat-map@0.0.1: {}
+
+  convex-test@0.0.38(convex@1.45.0(react@19.2.8)):
+    dependencies:
+      convex: 1.45.0(react@19.2.8)
 
   convex@1.45.0(react@19.2.8):
     dependencies:

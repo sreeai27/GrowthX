@@ -5,7 +5,11 @@ import { parseEnvironment } from "./env";
 describe("parseEnvironment", () => {
   it("accepts an empty local environment without exposing server secrets", () => {
     expect(parseEnvironment({})).toEqual({
-      features: { voiceCapture: false, openAiMapping: false },
+      features: {
+        voiceCapture: false,
+        openAiMapping: false,
+        fixtureMode: false,
+      },
       server: {},
     });
   });

@@ -4,7 +4,17 @@ const isWindows = process.platform === "win32";
 const server = spawn(
   process.execPath,
   ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1"],
-  { detached: !isWindows, stdio: "inherit" },
+  {
+    detached: !isWindows,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      FEATURE_FIXTURE_MODE: "true",
+      DEMO_FIXTURE_STORE_PATH: ".demo-fixture/e2e-runs.json",
+      DEMO_SESSION_COOKIE_SECRET:
+        "fixture-only-cookie-secret-at-least-32-bytes",
+    },
+  },
 );
 
 async function waitForServer() {

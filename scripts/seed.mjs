@@ -1,3 +1,6 @@
+import { ConvexHttpClient } from "convex/browser";
+import { makeFunctionReference } from "convex/server";
+
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 
 if (!convexUrl) {
@@ -7,7 +10,11 @@ if (!convexUrl) {
   process.exit(0);
 }
 
-new URL(convexUrl);
+const client = new ConvexHttpClient(new URL(convexUrl).toString());
+const seedDemo = makeFunctionReference("seed:seedDemo");
+const result = await client.mutation(seedDemo, {});
 console.log(
-  "Convex is configured. Run `npx convex run seed:seed` after adding the Phase 1 fixtures.",
+  result.inserted
+    ? "Seeded Sahaay demonstration data."
+    : "Sahaay demonstration data already exists.",
 );

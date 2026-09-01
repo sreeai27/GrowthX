@@ -254,6 +254,99 @@ blockquote {
   font-size: 1.15rem;
   line-height: 1.6;
 }
+.demo-entry,
+.booking-shell {
+  min-height: 100svh;
+  padding: 0 clamp(1.25rem, 5vw, 5rem) 3rem;
+  border-top: 6px solid var(--saathi-teal);
+}
+.demo-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.65fr);
+  gap: clamp(2.5rem, 7vw, 7rem);
+  align-items: center;
+  max-width: 78rem;
+  margin: 0 auto;
+  padding: clamp(3.5rem, 9vw, 7rem) 0;
+}
+.demo-intro h1,
+.booking-card h1 {
+  font-size: clamp(2.7rem, 6vw, 5.6rem);
+}
+.demo-device-card,
+.booking-card {
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  border: 1px solid #b7ccc8;
+  border-radius: 20px;
+  background: white;
+  box-shadow: 0 1.5rem 4rem rgb(15 118 110 / 0.1);
+}
+.demo-device-card > strong {
+  display: block;
+  margin-top: 1rem;
+  font-size: 1.35rem;
+  line-height: 1.35;
+}
+.demo-device-card > p {
+  color: var(--muted-ink);
+  line-height: 1.55;
+}
+.demo-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+.secondary-button {
+  min-height: 3rem;
+  width: 100%;
+  border: 1px solid var(--saathi-teal);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--saathi-teal);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+button:focus-visible {
+  outline: 3px solid var(--marigold);
+  outline-offset: 4px;
+}
+.demo-badge {
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: var(--marigold);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.booking-card {
+  max-width: 52rem;
+  margin: clamp(2rem, 7vw, 5rem) auto 0;
+}
+.booking-card h2 {
+  margin-top: 2rem;
+}
+.booking-card li {
+  margin: 0.65rem 0;
+}
+.booking-facts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin: 2rem 0;
+}
+.booking-facts div {
+  padding: 1rem;
+  border-radius: 12px;
+  background: #eaf4f1;
+}
+.booking-facts dt {
+  color: var(--muted-ink);
+  font-size: 0.8rem;
+}
+.booking-facts dd {
+  margin: 0.3rem 0 0;
+  font-weight: 700;
+}
 @media (max-width: 760px) {
   .operator-hero,
   .worker-hero {
@@ -274,6 +367,13 @@ blockquote {
   }
   .audience-switch {
     white-space: nowrap;
+  }
+  .demo-intro {
+    grid-template-columns: 1fr;
+    padding: 3.5rem 0;
+  }
+  .booking-facts {
+    grid-template-columns: 1fr;
   }
 }
 @media (prefers-reduced-motion: reduce) {
