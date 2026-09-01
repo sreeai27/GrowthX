@@ -1,0 +1,5 @@
+# Public demo identity and access
+
+The guided Build Week demo starts without an account and isolates each attempt behind a generated run ID and private 24-hour browser token. Email or Indian mobile is optional, unverified contact data used for private result delivery rather than identity; entering the same contact elsewhere starts a new run and reveals nothing from earlier runs. Public Trace is redacted and read-only, while real administrative controls require named sign-ins and full-contact reveals require an audited reason. This preserves immediate judge access and useful follow-up without creating false authentication, shared mutable sessions or public administrative access.
+
+Result-delivery contact and full runs expire after 30 days, secure result links after seven days, and a separately unchecked account-invitation consent may retain contact for up to six months. Early deletion uses a recorded administrator decision, second review for uncertain or refused cases, and a non-identifying completion receipt.

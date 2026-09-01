@@ -1,0 +1,12 @@
+node_modules/
+.codex-tools/
+.next/
+test-results/
+playwright-report/
+coverage/
+.env
+.env.local
+.env.*.local
+!.env.example
+*.tsbuildinfo
+.DS_Store

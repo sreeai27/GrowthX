@@ -1,0 +1,58 @@
+import { spawn } from "node:child_process";
+
+const isWindows = process.platform === "win32";
+const server = spawn(
+  process.execPath,
+  ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1"],
+  { detached: !isWindows, stdio: "inherit" },
+);
+
+async function waitForServer() {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      const response = await fetch("http://127.0.0.1:3000/hunar-os");
+      if (response.ok) return;
+    } catch {
+      // The server is still starting.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error("Next.js did not start within 30 seconds.");
+}
+
+function runPlaywright() {
+  return new Promise((resolve, reject) => {
+    const cli = spawn(
+      process.execPath,
+      ["node_modules/@playwright/test/cli.js", "test"],
+      {
+        stdio: "inherit",
+      },
+    );
+    cli.once("error", reject);
+    cli.once("exit", (code) => resolve(code ?? 1));
+  });
+}
+
+function stopServer() {
+  if (!server.pid) return Promise.resolve();
+  if (!isWindows) {
+    process.kill(-server.pid, "SIGTERM");
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const stop = spawn("taskkill", ["/PID", String(server.pid), "/T", "/F"], {
+      stdio: "ignore",
+    });
+    stop.once("exit", resolve);
+  });
+}
+
+let exitCode = 1;
+try {
+  await waitForServer();
+  exitCode = await runPlaywright();
+} finally {
+  await stopServer();
+}
+process.exit(exitCode);
