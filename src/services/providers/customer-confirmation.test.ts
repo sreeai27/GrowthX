@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   customerConfirmationViewSchema,
   parseConfirmationFixtureStore,
+  projectFixtureExecution,
   workerConfirmationViewSchema,
 } from "./customer-confirmation";
 import { buildConfirmationTaskLists } from "../../domain/customer-confirmation-snapshot";
@@ -39,6 +40,7 @@ describe("customer confirmation provider contracts", () => {
         commercialResponse: null,
         respondedAt: null,
         snapshot,
+        execution: null,
       }),
     ).toMatchObject({ status: "PENDING", snapshot });
     expect(
@@ -81,8 +83,10 @@ describe("customer confirmation provider contracts", () => {
       customerConfirmationViewSchema.parse({
         kind: "ALREADY_USED",
         status: "APPROVED",
+        snapshot,
+        execution: null,
       }),
-    ).toEqual({ kind: "ALREADY_USED", status: "APPROVED" });
+    ).toEqual({ kind: "ALREADY_USED", status: "APPROVED", snapshot, execution: null });
     expect(() =>
       customerConfirmationViewSchema.parse({
         kind: "INVALID",
@@ -133,5 +137,62 @@ describe("customer confirmation provider contracts", () => {
     ).toEqual([
       { taskId: "balcony_deep_cleaning", displayName: "Balcony deep cleaning" },
     ]);
+  });
+
+  it("projects a successful fixture execution without private request fields", () => {
+    const receipt = {
+      actionExecutionId: "execution-1",
+      connector: "DEMONSTRATION_CONNECTOR" as const,
+      idempotencyKey: "b".repeat(64),
+      externalActionId: "ACT-DEMO-1234567890AB",
+      requestHash: "a".repeat(64),
+      previousBookingVersion: 1,
+      resultingBookingVersion: 2,
+      actionType: "ADD_TASK" as const,
+      status: "SUCCEEDED" as const,
+      executedAt: "2026-09-01T10:01:00.000Z",
+    };
+    const result = projectFixtureExecution({
+      tokenHash: "c".repeat(64),
+      request: {
+        tenantId: "private-tenant",
+        incidentKey: "private-incident",
+        decisionHash: "decision-1",
+        bookingKey: "DEMO-4821",
+        bookingVersion: 1,
+        sourceVersion: "v1",
+        action: {
+          type: "ADD_TASK",
+          taskId: "balcony_deep_cleaning",
+          priceDeltaMinor: 29_900,
+          durationDeltaMinutes: 25,
+        },
+        requestHash: "a".repeat(64),
+        idempotencyKey: "b".repeat(64),
+      },
+      status: "SUCCEEDED",
+      attemptCount: 1,
+      receipt,
+      error: null,
+    });
+
+    expect(result).toEqual({
+      status: "SUCCEEDED",
+      attemptCount: 1,
+      receipt: {
+        connector: receipt.connector,
+        externalActionId: receipt.externalActionId,
+        previousBookingVersion: receipt.previousBookingVersion,
+        resultingBookingVersion: receipt.resultingBookingVersion,
+        status: receipt.status,
+        executedAt: receipt.executedAt,
+      },
+      error: null,
+    });
+    expect(result.receipt).not.toHaveProperty("requestHash");
+    expect(result.receipt).not.toHaveProperty("idempotencyKey");
+    expect(result.receipt).not.toHaveProperty("actionExecutionId");
+    expect(result).not.toHaveProperty("tokenHash");
+    expect(result).not.toHaveProperty("request");
   });
 });

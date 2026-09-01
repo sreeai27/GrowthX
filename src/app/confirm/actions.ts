@@ -39,9 +39,19 @@ export async function respondToConfirmationAction(formData: FormData) {
     })
     .strict()
     .parse({ token: formData.get("token"), response: formData.get("response") });
-  await getCustomerConfirmationGateway().respondToConfirmation(
+  const gateway = getCustomerConfirmationGateway();
+  await gateway.respondToConfirmation(
     hashDemoToken(input.token),
     input.response,
   );
+  if (input.response === "APPROVE") {
+    await gateway.executeApprovedAction(hashDemoToken(input.token));
+  }
   redirect(`/confirm/${input.token}`);
+}
+
+export async function retryApprovedAction(formData: FormData) {
+  const token = routeTokenSchema.parse(formData.get("token"));
+  await getCustomerConfirmationGateway().executeApprovedAction(hashDemoToken(token));
+  redirect(`/confirm/${token}`);
 }

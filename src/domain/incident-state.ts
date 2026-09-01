@@ -8,6 +8,8 @@ export type IncidentStatus =
   | "DECISION_READY"
   | "AWAITING_CUSTOMER"
   | "ACTION_AUTHORISED"
+  | "ACTION_EXECUTING"
+  | "ACTION_EXECUTED"
   | "COMPLETION_PENDING"
   | "AWAITING_HUMAN_REVIEW";
 
@@ -25,7 +27,13 @@ export type IncidentEvent =
   | { readonly type: "SEND_TO_CUSTOMER" }
   | { readonly type: "CUSTOMER_APPROVES" }
   | { readonly type: "CUSTOMER_DECLINES" }
-  | { readonly type: "CUSTOMER_REPORTS_MISMATCH" };
+  | { readonly type: "CUSTOMER_REPORTS_MISMATCH" }
+  | { readonly type: "START_ACTION" }
+  | { readonly type: "ACTION_SUCCEEDS" }
+  | { readonly type: "ACTION_FAILS" }
+  | { readonly type: "ACTION_ABORTS" }
+  | { readonly type: "ACTION_REQUIRES_RECONCILIATION" }
+  | { readonly type: "MARK_COMPLETION_PENDING" };
 
 export interface TransitionContext {
   readonly hasConfirmedTranscript?: boolean;
@@ -46,7 +54,13 @@ export interface TransitionResult {
     | "sent_to_customer"
     | "customer_approved"
     | "customer_declined"
-    | "customer_reported_mismatch";
+    | "customer_reported_mismatch"
+    | "action_started"
+    | "action_executed"
+    | "action_failed"
+    | "action_aborted"
+    | "action_reconciliation_required"
+    | "completion_pending";
 }
 
 export class InvalidIncidentTransitionError extends Error {
@@ -144,6 +158,28 @@ export function transitionIncident(
         };
       break;
     case "ACTION_AUTHORISED":
+      if (event.type === "START_ACTION")
+        return { nextStatus: "ACTION_EXECUTING", auditEvent: "action_started" };
+      if (event.type === "ACTION_REQUIRES_RECONCILIATION")
+        return { nextStatus: "AWAITING_HUMAN_REVIEW", auditEvent: "action_reconciliation_required" };
+      break;
+    case "ACTION_EXECUTING":
+      if (event.type === "ACTION_SUCCEEDS")
+        return { nextStatus: "ACTION_EXECUTED", auditEvent: "action_executed" };
+      if (event.type === "ACTION_FAILS")
+        return { nextStatus: "ACTION_AUTHORISED", auditEvent: "action_failed" };
+      if (event.type === "ACTION_ABORTS")
+        return { nextStatus: "COMPLETION_PENDING", auditEvent: "action_aborted" };
+      if (event.type === "ACTION_REQUIRES_RECONCILIATION")
+        return { nextStatus: "AWAITING_HUMAN_REVIEW", auditEvent: "action_reconciliation_required" };
+      break;
+    case "ACTION_EXECUTED":
+      if (event.type === "MARK_COMPLETION_PENDING")
+        return {
+          nextStatus: "COMPLETION_PENDING",
+          auditEvent: "completion_pending",
+        };
+      break;
     case "COMPLETION_PENDING":
     case "AWAITING_HUMAN_REVIEW":
       break;

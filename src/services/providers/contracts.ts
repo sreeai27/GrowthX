@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+export {
+  actionReceiptSchema,
+  type ActionReceipt,
+} from "../../domain/action-execution";
+export type { BookingActionConnector } from "./booking-action";
+
 export const speechTranscriptSchema = z.object({
   text: z.string().min(1),
   language: z.string().min(2),
@@ -26,16 +32,6 @@ export type StoredObject = z.infer<typeof storedObjectSchema>;
 
 export interface StorageProvider {
   store(data: ArrayBuffer, contentType: string): Promise<StoredObject>;
-}
-
-export const actionReceiptSchema = z.object({
-  receiptId: z.string().min(1),
-  completedAtUtc: z.string().datetime({ offset: true }),
-});
-export type ActionReceipt = z.infer<typeof actionReceiptSchema>;
-
-export interface ActionProvider {
-  execute(authorizationId: string): Promise<ActionReceipt>;
 }
 
 export interface AnalyticsProvider {

@@ -81,6 +81,42 @@ describe("transitionIncident", () => {
       auditEvent: "customer_reported_mismatch",
     },
     {
+      current: "ACTION_AUTHORISED",
+      event: { type: "START_ACTION" },
+      nextStatus: "ACTION_EXECUTING",
+      auditEvent: "action_started",
+    },
+    {
+      current: "ACTION_EXECUTING",
+      event: { type: "ACTION_SUCCEEDS" },
+      nextStatus: "ACTION_EXECUTED",
+      auditEvent: "action_executed",
+    },
+    {
+      current: "ACTION_EXECUTED",
+      event: { type: "MARK_COMPLETION_PENDING" },
+      nextStatus: "COMPLETION_PENDING",
+      auditEvent: "completion_pending",
+    },
+    {
+      current: "ACTION_EXECUTING",
+      event: { type: "ACTION_FAILS" },
+      nextStatus: "ACTION_AUTHORISED",
+      auditEvent: "action_failed",
+    },
+    {
+      current: "ACTION_EXECUTING",
+      event: { type: "ACTION_ABORTS" },
+      nextStatus: "COMPLETION_PENDING",
+      auditEvent: "action_aborted",
+    },
+    {
+      current: "ACTION_AUTHORISED",
+      event: { type: "ACTION_REQUIRES_RECONCILIATION" },
+      nextStatus: "AWAITING_HUMAN_REVIEW",
+      auditEvent: "action_reconciliation_required",
+    },
+    {
       current: "TRANSCRIPT_READY",
       event: { type: "RETRY_INPUT" },
       nextStatus: "DRAFT",
@@ -135,6 +171,8 @@ describe("transitionIncident", () => {
     ["DRAFT", "SEND_TO_CUSTOMER"],
     ["DECISION_READY", "CUSTOMER_APPROVES"],
     ["ACTION_AUTHORISED", "CUSTOMER_DECLINES"],
+    ["ACTION_EXECUTING", "START_ACTION"],
+    ["ACTION_EXECUTED", "ACTION_FAILS"],
     ["COMPLETION_PENDING", "CUSTOMER_REPORTS_MISMATCH"],
   ] as const)("rejects %s -> %s", (current, type) => {
     expect(() =>

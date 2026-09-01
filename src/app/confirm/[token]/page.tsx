@@ -2,6 +2,7 @@ import {
   confirmCustomerRequestAction,
   getCustomerConfirmation,
   respondToConfirmationAction,
+  retryApprovedAction,
 } from "../actions";
 
 function money(minor: number, currency: string) {
@@ -36,6 +37,21 @@ function Terminal({ state }: { state: keyof typeof terminalCopy }) {
   );
 }
 
+function RevisedAgreement({ token, view }: { token: string; view: Extract<Awaited<ReturnType<typeof getCustomerConfirmation>>, { kind: "ALREADY_USED" }> }) {
+  const execution = view.execution;
+  if (view.status !== "APPROVED") return <Terminal state={view.status} />;
+  if (!execution || execution.status === "PENDING") {
+    return <main className="customer-confirm-shell"><article className="customer-terminal"><p className="eyebrow">Authorised update · अधिकृत बदलाव</p><h1>Updating the booking</h1><p lang="hi">बुकिंग अपडेट हो रही है</p><p>The approved change is being checked. Refresh this page for the stored result.</p></article></main>;
+  }
+  if (execution.status !== "SUCCEEDED" || !execution.receipt) {
+    const retryable = execution.status === "RETRYABLE_FAILED";
+    const reconciliation = execution.status === "RECONCILIATION_REQUIRED";
+    return <main className="customer-confirm-shell"><article className="customer-terminal terminal-failure"><p className="eyebrow">Safe recovery · सुरक्षित अगला कदम</p><h1>{reconciliation ? "Update needs support review" : retryable ? "Booking update needs another try" : "Booking was not changed"}</h1><p lang="hi">{reconciliation ? "अपडेट की जाँच ज़रूरी है" : "बुकिंग में बदलाव नहीं हुआ"}</p><p>{reconciliation ? "The connector reported success, but the booking record changed before it could be confirmed. Do not retry or assume either version is final; support must reconcile it." : retryable ? "The saved approval is still valid. Retry the same update safely." : "Please continue with the original booking and ask support for help."}</p>{retryable ? <form action={retryApprovedAction}><input name="token" type="hidden" value={token}/><button className="button button-teal">Retry booking update · फिर से कोशिश करें</button></form> : null}</article></main>;
+  }
+  const price = money(view.snapshot.priceDeltaMinor, view.snapshot.currency);
+  return <main className="customer-confirm-shell"><header className="customer-brand"><span>SAHAAY · सहाय</span><small>FICTIONAL DEMO</small></header><article className="revised-agreement"><p className="eyebrow">Revised agreement · संशोधित सहमति</p><h1>Booking updated</h1><p className="hindi-copy" lang="hi">बुकिंग अपडेट हो गई</p><ul className="revised-task-list">{view.snapshot.resultingTasks.map((task) => <li key={task.taskId}>{task.displayName}</li>)}</ul><p className="revised-impact">+{view.snapshot.durationDeltaMinutes} minutes · {price}</p><section className="receipt-proof" aria-label="Demonstration connector receipt"><span className="proof-node" aria-hidden="true"/><div><p className="decision-label">Demonstration connector · डेमो कनेक्टर</p><h2>{execution.receipt.externalActionId}</h2><p>{new Date(execution.receipt.executedAt).toLocaleString("en-IN")}</p><p className="source-version">Booking version {execution.receipt.previousBookingVersion} → {execution.receipt.resultingBookingVersion}</p></div></section></article></main>;
+}
+
 export default async function CustomerConfirmationPage({
   params,
 }: {
@@ -46,7 +62,7 @@ export default async function CustomerConfirmationPage({
   if (view.kind === "INVALID" || view.kind === "EXPIRED" || view.kind === "STALE") {
     return <Terminal state={view.kind} />;
   }
-  if (view.kind === "ALREADY_USED") return <Terminal state={view.status} />;
+  if (view.kind === "ALREADY_USED") return <RevisedAgreement token={token} view={view} />;
 
   const snapshot = view.snapshot;
   const price = money(snapshot.priceDeltaMinor, snapshot.currency);

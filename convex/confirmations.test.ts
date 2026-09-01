@@ -315,10 +315,22 @@ describe("customer confirmation persistence", () => {
     await expect(
       database.mutation(respond, { tokenHash, response: "DECLINE" }),
     ).rejects.toThrow("Confirmation request is already used.");
-    expect(await database.mutation(getForCustomer, { tokenHash })).toEqual({
+    const customerView = await database.mutation(getForCustomer, { tokenHash });
+    expect(customerView).toMatchObject({
       kind: "ALREADY_USED",
       status: "APPROVED",
+      snapshot: {
+        bookingKey: "DEMO-4821",
+        taskDisplayName: "Balcony deep cleaning",
+        priceDeltaMinor: 29_900,
+        durationDeltaMinutes: 25,
+        sourceVersion: "v1",
+      },
+      execution: null,
     });
+    expect(JSON.stringify(customerView)).not.toMatch(
+      /tenantId|tokenHash|decisionId|incidentId|requestHash|idempotencyKey|actionExecutionId/,
+    );
     expect(await database.mutation(getForWorker, workerAccess)).toMatchObject({
       status: "APPROVED",
       requestConfirmed: true,

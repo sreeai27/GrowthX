@@ -58,6 +58,20 @@ export default async function WorkerConfirmationStatusPage({
         }
       : workerOutcome[result.confirmation.status];
   const customerHref = result.rawToken ? `/confirm/${result.rawToken}` : null;
+  const execution = result.confirmation.execution;
+  const receipt = execution?.status === "SUCCEEDED" ? execution.receipt : null;
+
+  if (receipt) {
+    const snapshot = result.confirmation.snapshot;
+    const price = new Intl.NumberFormat("en-IN", { style: "currency", currency: snapshot.currency, maximumFractionDigits: 0 }).format(snapshot.priceDeltaMinor / 100);
+    return <main className="incident-shell confirmation-shell"><header className="incident-topbar"><span className="demo-badge">FICTIONAL DEMO</span><span className="incident-step">REVISED AGREEMENT</span></header><article className="confirmation-outcome revised-agreement"><p className="eyebrow">Shared result · साझा नतीजा</p><h1>Booking updated</h1><p className="hindi-copy" lang="hi">बुकिंग अपडेट हो गई</p><ul className="revised-task-list">{snapshot.resultingTasks.map((task) => <li key={task.taskId}>{task.displayName}</li>)}</ul><p className="revised-impact">+{snapshot.durationDeltaMinutes} minutes · {price}</p><section className="receipt-proof" aria-label="Demonstration connector receipt"><span className="proof-node" aria-hidden="true"/><div><p className="decision-label">Demonstration connector · डेमो कनेक्टर</p><h2>{receipt.externalActionId}</h2><p>{new Date(receipt.executedAt).toLocaleString("en-IN")}</p><p className="source-version">Booking version {receipt.previousBookingVersion} → {receipt.resultingBookingVersion}</p></div></section></article></main>;
+  }
+
+  if (execution?.status === "PENDING" || execution?.status === "RETRYABLE_FAILED" || execution?.status === "PERMANENT_FAILED" || execution?.status === "RECONCILIATION_REQUIRED") {
+    const retryable = execution.status === "RETRYABLE_FAILED";
+    const reconciliation = execution.status === "RECONCILIATION_REQUIRED";
+    return <main className="incident-shell confirmation-shell"><article className="confirmation-outcome terminal-failure"><p className="eyebrow">Action status · कार्रवाई की स्थिति</p><h1>{reconciliation ? "Connector result needs reconciliation" : execution.status === "PENDING" ? "Booking update in progress" : retryable ? "Booking update needs another try" : "Booking was not changed"}</h1><p lang="hi">{reconciliation ? "कनेक्टर नतीजे की जाँच ज़रूरी है" : "बुकिंग में बदलाव अभी दर्ज नहीं हुआ"}</p><p>{reconciliation ? "The connector reported success while the booking record changed. Do not repeat the action or promise either booking version; escalate to support." : retryable ? "Ask the customer to retry from the same secure link." : execution.status === "PENDING" ? "Refresh to check the stored connector result." : "Continue with the original booking and contact support."}</p></article></main>;
+  }
 
   return (
     <main className="incident-shell confirmation-shell">

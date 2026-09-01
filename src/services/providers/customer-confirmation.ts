@@ -16,7 +16,18 @@ import {
   buildConfirmationSnapshot,
   validateConfirmationCreation,
 } from "../../domain/customer-confirmation-snapshot";
+import { transitionIncident } from "../../domain/incident-state";
 import { workerPolicyDecisionViewSchema } from "./worker-policy-decision";
+import {
+  actionExecutionRequestSchema,
+  actionReceiptSchema,
+  buildActionExecutionRequest,
+} from "../../domain/action-execution";
+import {
+  BookingActionConnectorError,
+  MockBookingActionConnector,
+  type BookingActionConnector,
+} from "./booking-action";
 
 const confirmationStatusSchema = z.enum([
   "PENDING",
@@ -51,6 +62,20 @@ export const confirmationSnapshotSchema = z
   })
   .strict();
 
+export const actionExecutionViewSchema = z.object({
+  status: z.enum(["PENDING", "SUCCEEDED", "RETRYABLE_FAILED", "PERMANENT_FAILED", "RECONCILIATION_REQUIRED"]),
+  attemptCount: z.number().int().positive(),
+  receipt: actionReceiptSchema.pick({
+    connector: true,
+    externalActionId: true,
+    previousBookingVersion: true,
+    resultingBookingVersion: true,
+    status: true,
+    executedAt: true,
+  }).nullable(),
+  error: z.object({ code: z.string(), message: z.string() }).strict().nullable(),
+}).strict();
+
 export const workerConfirmationViewSchema = z
   .object({
     status: confirmationStatusSchema,
@@ -59,6 +84,7 @@ export const workerConfirmationViewSchema = z
     commercialResponse: z.enum(["APPROVE", "DECLINE"]).nullable(),
     respondedAt: z.string().datetime().nullable(),
     snapshot: confirmationSnapshotSchema,
+    execution: actionExecutionViewSchema.nullable(),
   })
   .strict();
 
@@ -82,6 +108,8 @@ export const customerConfirmationViewSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("ALREADY_USED"),
       status: z.enum(["APPROVED", "DECLINED", "REQUEST_MISMATCH"]),
+      snapshot: confirmationSnapshotSchema,
+      execution: actionExecutionViewSchema.nullable(),
     })
     .strict(),
 ]);
@@ -116,6 +144,8 @@ export type WorkerConfirmationView = z.infer<typeof workerConfirmationViewSchema
 export type CustomerConfirmationView = z.infer<typeof customerConfirmationViewSchema>;
 export type ConfirmationSnapshot = z.infer<typeof confirmationSnapshotSchema>;
 
+export type ActionExecutionView = z.infer<typeof actionExecutionViewSchema>;
+
 interface WorkerAccess extends Record<string, Value> {
   readonly publicRunId: string;
   readonly browserTokenHash: string;
@@ -139,6 +169,10 @@ export interface CustomerConfirmationGateway {
     tokenHash: string,
     response: "APPROVE" | "DECLINE",
   ): Promise<z.infer<typeof responseResultSchema>>;
+  executeApprovedAction(
+    tokenHash: string,
+    connector?: BookingActionConnector,
+  ): Promise<ActionExecutionView>;
 }
 
 const createRef = makeFunctionReference<"mutation", CreateInput, unknown>(
@@ -162,6 +196,7 @@ const respondRef = makeFunctionReference<
   { tokenHash: string; response: "APPROVE" | "DECLINE" },
   unknown
 >("confirmations:respond");
+const executeActionRef = makeFunctionReference<"action", { tokenHash: string }, unknown>("actionExecutions:execute");
 
 function convexGateway(convexUrl: string): CustomerConfirmationGateway {
   const client = new ConvexHttpClient(convexUrl);
@@ -188,10 +223,13 @@ function convexGateway(convexUrl: string): CustomerConfirmationGateway {
         await client.mutation(respondRef, { tokenHash, response }),
       );
     },
+    executeApprovedAction(tokenHash) {
+      return actionExecutionViewSchema.parseAsync(client.action(executeActionRef, { tokenHash }));
+    },
   };
 }
 
-const fixtureRequestSchema = workerConfirmationViewSchema.extend({
+const fixtureRequestSchema = workerConfirmationViewSchema.omit({ execution: true }).extend({
   publicRunId: z.string().min(1),
   incidentKey: z.string().min(1),
   tokenHash: z.string().regex(/^[a-f0-9]{64}$/),
@@ -200,7 +238,40 @@ const fixtureRequestSchema = workerConfirmationViewSchema.extend({
   sourceVersion: z.string().min(1),
   createdAt: z.string().datetime(),
 });
-type FixtureStore = { requests: Array<z.infer<typeof fixtureRequestSchema>> };
+type FixtureStore = {
+  requests: Array<z.infer<typeof fixtureRequestSchema>>;
+  executions: FixtureExecution[];
+  connectorReceipts: Array<z.infer<typeof fixtureConnectorReceiptSchema>>;
+};
+const fixtureExecutionSchema = actionExecutionViewSchema.extend({
+  tokenHash: z.string().regex(/^[a-f0-9]{64}$/),
+  request: actionExecutionRequestSchema,
+  receipt: actionReceiptSchema.nullable(),
+});
+const fixtureConnectorReceiptSchema = z.object({
+  tenantId: z.literal("demo_sahaay_home_services"),
+  idempotencyKey: z.string().regex(/^[a-f0-9]{64}$/),
+  requestHash: z.string().regex(/^[a-f0-9]{64}$/),
+  receipt: actionReceiptSchema,
+}).strict();
+type FixtureExecution = z.infer<typeof fixtureExecutionSchema>;
+export function projectFixtureExecution(execution: FixtureExecution): ActionExecutionView {
+  return actionExecutionViewSchema.parse({
+    status: execution.status,
+    attemptCount: execution.attemptCount,
+    receipt: execution.receipt ? {
+      connector: execution.receipt.connector,
+      externalActionId: execution.receipt.externalActionId,
+      previousBookingVersion: execution.receipt.previousBookingVersion,
+      resultingBookingVersion: execution.receipt.resultingBookingVersion,
+      status: execution.receipt.status,
+      executedAt: execution.receipt.executedAt,
+    } : null,
+    error: execution.error,
+  });
+}
+const fixtureExecutionLocks = new Map<string, Promise<ActionExecutionView>>();
+const demonstrationBookingConnector = new MockBookingActionConnector();
 const legacyFixtureStoreSchema = z.object({
   requests: z.array(
     fixtureRequestSchema
@@ -210,6 +281,8 @@ const legacyFixtureStoreSchema = z.object({
         return request;
       }),
   ),
+  executions: z.array(fixtureExecutionSchema).optional().default([]),
+  connectorReceipts: z.array(fixtureConnectorReceiptSchema).optional().default([]),
 });
 
 export function parseConfirmationFixtureStore(raw: unknown): {
@@ -258,7 +331,7 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
       }
       return store;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { requests: [] };
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { requests: [], executions: [], connectorReceipts: [] };
       throw error;
     }
   }
@@ -317,7 +390,11 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
       ? ({ kind: "STALE", status: "STALE" } as const)
       : result;
   }
-  function workerView(request: FixtureStore["requests"][number]) {
+  function executionView(store: FixtureStore, request: FixtureStore["requests"][number]) {
+    const execution = store.executions.find((candidate) => candidate.tokenHash === request.tokenHash);
+    return execution ? projectFixtureExecution(execution) : null;
+  }
+  function workerView(store: FixtureStore, request: FixtureStore["requests"][number]) {
     return workerConfirmationViewSchema.parse({
       status: request.status,
       expiresAt: request.expiresAt,
@@ -325,6 +402,7 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
       commercialResponse: request.commercialResponse,
       respondedAt: request.respondedAt,
       snapshot: request.snapshot,
+      execution: executionView(store, request),
     });
   }
   function createdView(request: FixtureStore["requests"][number]) {
@@ -335,6 +413,7 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
     });
   }
   function publicView(
+    store: FixtureStore,
     request: FixtureStore["requests"][number],
     result: ReturnType<typeof evaluateConfirmationAccess>,
   ): CustomerConfirmationView {
@@ -347,7 +426,7 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
       });
     }
     if (result.kind === "ALREADY_USED") {
-      return { kind: "ALREADY_USED", status: result.status };
+      return { kind: "ALREADY_USED", status: result.status, snapshot: request.snapshot, execution: executionView(store, request) };
     }
     return { kind: result.kind === "EXPIRED" ? "EXPIRED" : "STALE" };
   }
@@ -435,7 +514,7 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
         request.status = result.kind;
         await writeRequests(store);
       }
-      return workerView(request);
+      return workerView(store, request);
     },
     async getCustomerConfirmation(tokenHash) {
       const store = await readRequests();
@@ -448,7 +527,7 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
         request.status = result.kind;
         await writeRequests(store);
       }
-      return publicView(request, result);
+      return publicView(store, request, result);
     },
     async confirmCustomerRequest(tokenHash, answer) {
       const store = await readRequests();
@@ -517,6 +596,150 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
         await Promise.all([writeRequests(store), writeIncidents(relation.store)]);
       }
       return responseResultSchema.parse({ kind: result.kind, status: result.status });
+    },
+    async executeApprovedAction(tokenHash, connector = demonstrationBookingConnector) {
+      const active = fixtureExecutionLocks.get(tokenHash);
+      if (active) return active;
+      const run = (async () => {
+        const store = await readRequests();
+        const request = store.requests.find((candidate) => candidate.tokenHash === tokenHash);
+        if (!request) throw new Error("Confirmation request is invalid.");
+        const relation = await currentDecision(request);
+        const decision = relation.decision;
+        if (!relation.incident || !decision || !decision.authority) throw new Error("Action authority is stale.");
+        const existing = store.executions.find((candidate) => candidate.tokenHash === tokenHash);
+        if (existing?.status === "SUCCEEDED" || existing?.status === "PERMANENT_FAILED" || existing?.status === "RECONCILIATION_REQUIRED") {
+          return projectFixtureExecution(existing);
+        }
+        const storedConnectorReceipt = existing
+          ? store.connectorReceipts.find((candidate) => candidate.idempotencyKey === existing.request.idempotencyKey)
+          : null;
+        const authorityChanged =
+          request.bookingVersion !== decision.booking.bookingVersion ||
+          request.decisionHash !== decision.decisionHash ||
+          request.sourceVersion !== decision.authority.version;
+        if (existing && storedConnectorReceipt && authorityChanged) {
+          existing.status = "RECONCILIATION_REQUIRED";
+          existing.error = { code: "RECONCILIATION_REQUIRED", message: "The connector succeeded, but current booking authority changed before local finalization." };
+          relation.incident.status = "AWAITING_HUMAN_REVIEW";
+          await Promise.all([writeRequests(store), writeIncidents(relation.store)]);
+          return projectFixtureExecution(existing);
+        }
+        const recovering = existing?.status === "PENDING" || existing?.status === "RETRYABLE_FAILED";
+        if (recovering) {
+          if (relation.incident.status !== "ACTION_EXECUTING" && relation.incident.status !== "ACTION_AUTHORISED") {
+            throw new Error("Action authority changed before retry.");
+          }
+        } else if (relation.incident.status !== "ACTION_AUTHORISED") {
+          throw new Error("Action is not authorised.");
+        }
+        const executionRequest = buildActionExecutionRequest({
+          tenantId: "demo_sahaay_home_services",
+          incidentKey: request.incidentKey,
+          incidentStatus: "ACTION_AUTHORISED",
+          bookingKey: decision.booking.bookingKey,
+          storedBookingVersion: request.bookingVersion,
+          currentBookingVersion: decision.booking.bookingVersion,
+          storedDecisionHash: request.decisionHash,
+          currentDecisionHash: decision.decisionHash,
+          storedSourceVersion: request.sourceVersion,
+          currentSourceVersion: decision.authority.version,
+          requestConfirmedByCustomer: request.requestConfirmed,
+          commercialResponse: request.commercialResponse,
+          decisionState: decision.outcome.decisionState ?? "NOT_SUPPORTED",
+          supportState: decision.outcome.supportState,
+          action: { type: "ADD_TASK", taskId: request.snapshot.taskId, priceDeltaMinor: request.snapshot.priceDeltaMinor, durationDeltaMinutes: request.snapshot.durationDeltaMinutes },
+        });
+        if (existing && (existing.request.idempotencyKey !== executionRequest.idempotencyKey || existing.request.requestHash !== executionRequest.requestHash)) {
+          throw new Error("Idempotency key payload mismatch.");
+        }
+        const record: FixtureExecution = fixtureExecutionSchema.parse(existing ? {
+          ...existing, status: "PENDING", attemptCount: existing.attemptCount + 1, error: null,
+        } : { tokenHash, request: executionRequest, status: "PENDING", attemptCount: 1, receipt: null, error: null });
+        if (existing) Object.assign(existing, record); else store.executions.push(record);
+        if (relation.incident.status === "ACTION_AUTHORISED") {
+          relation.incident.status = transitionIncident(relation.incident.status, { type: "START_ACTION" }, {}).nextStatus;
+        }
+        await Promise.all([writeRequests(store), writeIncidents(relation.store)]);
+        try {
+          const storedConnectorReceipt = store.connectorReceipts.find(
+            (candidate) => candidate.idempotencyKey === executionRequest.idempotencyKey,
+          );
+          if (storedConnectorReceipt && storedConnectorReceipt.requestHash !== executionRequest.requestHash) {
+            throw new Error("Connector idempotency payload mismatch.");
+          }
+          let receipt = storedConnectorReceipt?.receipt ?? null;
+          if (!receipt) {
+            try {
+              receipt = await connector.execute(executionRequest);
+            } catch (error) {
+              const connectorError = error instanceof BookingActionConnectorError ? error : null;
+              const committedReceipt = connectorError?.outcomeUncertain
+                ? connector.getStoredReceipt?.(executionRequest.idempotencyKey) ?? null
+                : null;
+              if (committedReceipt) {
+                store.connectorReceipts.push(fixtureConnectorReceiptSchema.parse({
+                  tenantId: "demo_sahaay_home_services",
+                  idempotencyKey: executionRequest.idempotencyKey,
+                  requestHash: executionRequest.requestHash,
+                  receipt: committedReceipt,
+                }));
+                await writeRequests(store);
+              }
+              throw error;
+            }
+            store.connectorReceipts.push(fixtureConnectorReceiptSchema.parse({
+              tenantId: "demo_sahaay_home_services",
+              idempotencyKey: executionRequest.idempotencyKey,
+              requestHash: executionRequest.requestHash,
+              receipt,
+            }));
+            await writeRequests(store);
+          }
+          const refreshedStore = await readRequests();
+          const refreshed = refreshedStore.executions.find((candidate) => candidate.request.idempotencyKey === executionRequest.idempotencyKey);
+          const refreshedRelation = await currentDecision(request);
+          if (!refreshed || !refreshedRelation.incident || !refreshedRelation.decision) throw new Error("Action reservation is unavailable.");
+          if (refreshed.status === "SUCCEEDED") return projectFixtureExecution(refreshed);
+          if (refreshedRelation.incident.status !== "ACTION_EXECUTING") throw new Error("Action lifecycle changed before finalization.");
+          const booking = refreshedRelation.decision.booking;
+          if (booking.bookingVersion !== receipt.previousBookingVersion) throw new Error("Action authority changed before finalization.");
+          const task = { taskId: request.snapshot.taskId, displayName: request.snapshot.taskDisplayName };
+          if (!booking.includedTasks.some((candidate) => candidate.taskId === task.taskId)) booking.includedTasks.push(task);
+          booking.scheduledDurationMinutes += request.snapshot.durationDeltaMinutes;
+          booking.bookingVersion = receipt.resultingBookingVersion;
+          const executed = transitionIncident(refreshedRelation.incident.status, { type: "ACTION_SUCCEEDS" }, {});
+          refreshedRelation.incident.status = transitionIncident(executed.nextStatus, { type: "MARK_COMPLETION_PENDING" }, {}).nextStatus;
+          Object.assign(refreshed, { status: "SUCCEEDED", receipt, error: null });
+          await Promise.all([writeRequests(refreshedStore), writeIncidents(refreshedRelation.store)]);
+          return projectFixtureExecution(refreshed);
+        } catch (error) {
+          const refreshedStore = await readRequests();
+          const refreshed = refreshedStore.executions.find((candidate) => candidate.request.idempotencyKey === executionRequest.idempotencyKey);
+          if (!refreshed) throw error;
+          const connectorError = error instanceof BookingActionConnectorError ? error : null;
+          const hasDurableReceipt = refreshedStore.connectorReceipts.some(
+            (candidate) => candidate.idempotencyKey === executionRequest.idempotencyKey,
+          );
+          refreshed.status = connectorError?.retryable || hasDurableReceipt ? "RETRYABLE_FAILED" : "PERMANENT_FAILED";
+          refreshed.error = { code: connectorError?.code ?? "INVALID_CONNECTOR_RESULT", message: connectorError?.message ?? "The connector returned an invalid result." };
+          const failedRelation = await currentDecision(request);
+          if (failedRelation.incident) {
+            if (failedRelation.incident.status !== "ACTION_EXECUTING") throw new Error("Action lifecycle changed before failure was recorded.");
+            failedRelation.incident.status = transitionIncident(
+              failedRelation.incident.status,
+              { type: connectorError?.retryable || hasDurableReceipt ? "ACTION_FAILS" : "ACTION_ABORTS" },
+              {},
+            ).nextStatus;
+            await Promise.all([writeRequests(refreshedStore), writeIncidents(failedRelation.store)]);
+          } else {
+            await writeRequests(refreshedStore);
+          }
+          return projectFixtureExecution(refreshed);
+        }
+      })();
+      fixtureExecutionLocks.set(tokenHash, run);
+      try { return await run; } finally { fixtureExecutionLocks.delete(tokenHash); }
     },
   };
 }

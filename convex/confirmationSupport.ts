@@ -40,6 +40,34 @@ type MutationContext = GenericMutationCtx<DataModel>;
 type Doc<TableName extends keyof DataModel> = DocumentByName<DataModel, TableName>;
 type StoredConfirmation = Doc<"confirmationRequests">;
 
+async function executionProjection(context: MutationContext, request: StoredConfirmation) {
+  const executions = await context.db
+    .query("actionExecutions")
+    .withIndex("by_tenant_incident", (range) =>
+      range.eq("tenantId", request.tenantId).eq("incidentId", request.incidentId),
+    )
+    .collect();
+  const execution = executions.find((candidate) => candidate.confirmationRequestId === request._id);
+  const receipt = execution?.receipt;
+  return execution
+    ? {
+        status: execution.status,
+        attemptCount: execution.attemptCount,
+        receipt: receipt ? {
+          connector: receipt.connector,
+          externalActionId: receipt.externalActionId,
+          previousBookingVersion: receipt.previousBookingVersion,
+          resultingBookingVersion: receipt.resultingBookingVersion,
+          status: receipt.status,
+          executedAt: receipt.executedAt,
+        } : null,
+        error: execution.errorCode
+          ? { code: execution.errorCode, message: execution.errorMessage ?? "Action could not be completed." }
+          : null,
+      }
+    : null;
+}
+
 async function findDecision(
   context: MutationContext,
   incidentId: Doc<"incidents">["_id"],
@@ -154,7 +182,8 @@ async function evaluateStoredRequest(
   return { access, relations };
 }
 
-function publicAccessView(
+async function publicAccessView(
+  context: MutationContext,
   request: StoredConfirmation,
   access: ConfirmationAccessResult,
 ) {
@@ -167,7 +196,12 @@ function publicAccessView(
     };
   }
   if (access.kind === "ALREADY_USED") {
-    return { kind: "ALREADY_USED" as const, status: access.status };
+    return {
+      kind: "ALREADY_USED" as const,
+      status: access.status,
+      snapshot: request.requestSnapshot,
+      execution: await executionProjection(context, request),
+    };
   }
   if (access.kind === "EXPIRED") return { kind: "EXPIRED" as const };
   return { kind: "STALE" as const };
@@ -307,7 +341,7 @@ export async function getForCustomerHandler(
   if (access.kind === "EXPIRED" || access.kind === "STALE") {
     await context.db.patch(request._id, { status: access.kind, updatedAt: nowIso });
   }
-  return publicAccessView(request, access);
+  return publicAccessView(context, request, access);
 }
 
 async function applyResponse(
@@ -424,5 +458,6 @@ export async function getForWorkerHandler(
     commercialResponse: request.commercialResponse ?? null,
     respondedAt: request.respondedAt ?? null,
     snapshot: request.requestSnapshot,
+    execution: await executionProjection(context, request),
   };
 }

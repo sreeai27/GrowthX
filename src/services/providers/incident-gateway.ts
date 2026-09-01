@@ -57,6 +57,8 @@ export const workerIncidentViewSchema = z.object({
     "DECISION_READY",
     "AWAITING_CUSTOMER",
     "ACTION_AUTHORISED",
+    "ACTION_EXECUTING",
+    "ACTION_EXECUTED",
     "COMPLETION_PENDING",
     "AWAITING_HUMAN_REVIEW",
   ]),
