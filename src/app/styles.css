@@ -11,6 +11,116 @@
   --paper-raised: #ffffff;
 }
 
+.completion-shell,
+.completion-card {
+  width: min(100%, 760px);
+  margin-inline: auto;
+}
+.completion-card {
+  background: var(--paper-raised);
+  border-radius: 20px;
+  padding: clamp(24px, 5vw, 48px);
+  box-shadow:
+    0 0 0 1px rgb(11 31 42 / 0.08),
+    0 12px 32px rgb(23 50 77 / 0.08);
+}
+.completion-card > h1 {
+  font-family: var(--font-anek), sans-serif;
+  color: var(--work-ink);
+  font-size: clamp(2.35rem, 8vw, 4.25rem);
+  line-height: 1;
+  max-width: 14ch;
+  text-wrap: balance;
+}
+.completion-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 32px 0;
+}
+.completion-form legend {
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+.completion-task {
+  padding: 20px 0;
+  border-top: 1px solid rgb(11 31 42 / 0.1);
+}
+.completion-task h2 {
+  font-size: 1.1rem;
+  margin: 0 0 12px;
+}
+.completion-task label {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  gap: 12px;
+}
+.completion-task input[type="radio"] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--saathi-teal);
+}
+.completion-note,
+.completion-response label {
+  display: grid;
+  gap: 8px;
+  margin-block: 24px;
+  font-weight: 700;
+}
+.completion-note textarea,
+.completion-response textarea {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+  border: 1px solid rgb(11 31 42 / 0.25);
+  border-radius: 12px;
+  padding: 12px;
+  font: inherit;
+  background: var(--warm-paper);
+}
+.completion-note textarea:focus-visible,
+.completion-response textarea:focus-visible {
+  outline: 3px solid var(--marigold);
+  outline-offset: 2px;
+}
+.completion-summary {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0;
+}
+.completion-summary li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  border-bottom: 1px solid rgb(11 31 42 / 0.1);
+}
+.completion-summary strong {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.75rem;
+  color: var(--system-navy);
+}
+.completion-response {
+  background: rgb(15 118 110 / 0.07);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 8px 24px rgb(15 118 110 / 0.07);
+}
+.completion-response button,
+.completion-form button {
+  min-height: 48px;
+  width: 100%;
+  margin-top: 8px;
+}
+.completion-error {
+  padding: 16px;
+  border-radius: 12px;
+  color: var(--danger-red);
+  background: rgb(180 35 24 / 0.08);
+  font-weight: 700;
+}
+
 /* Customer confirmation: a frozen work record followed by one decision. */
 .confirmation-shell,
 .customer-confirm-shell {
@@ -28,7 +138,9 @@
   padding: 32px 24px;
   border-radius: 20px;
   background: var(--paper-raised);
-  box-shadow: 0 0 0 1px rgb(11 31 42 / 0.08), 0 12px 32px rgb(23 50 77 / 0.08);
+  box-shadow:
+    0 0 0 1px rgb(11 31 42 / 0.08),
+    0 12px 32px rgb(23 50 77 / 0.08);
 }
 
 .confirmation-outcome h1,
@@ -207,7 +319,9 @@
   border-radius: 20px;
   border-left: 4px solid var(--marigold);
   background: var(--paper-raised);
-  box-shadow: 0 0 0 1px rgb(11 31 42 / 0.08), 0 12px 32px rgb(23 50 77 / 0.08);
+  box-shadow:
+    0 0 0 1px rgb(11 31 42 / 0.08),
+    0 12px 32px rgb(23 50 77 / 0.08);
 }
 
 .customer-source-proof h2 {
@@ -230,7 +344,7 @@
     padding: 32px 24px 80px;
   }
 
-.customer-confirm-card {
+  .customer-confirm-card {
     padding: 24px 40px 40px;
     border-radius: 20px;
     background: rgb(255 255 255 / 0.28);
@@ -244,7 +358,9 @@
   padding: clamp(24px, 6vw, 48px);
   border-radius: 20px;
   background: var(--paper-raised);
-  box-shadow: 0 0 0 1px rgb(11 31 42 / 0.08), 0 12px 32px rgb(23 50 77 / 0.08);
+  box-shadow:
+    0 0 0 1px rgb(11 31 42 / 0.08),
+    0 12px 32px rgb(23 50 77 / 0.08);
 }
 
 .revised-task-list {
@@ -292,7 +408,9 @@
   background-clip: padding-box;
 }
 
-.terminal-failure form { margin-top: 24px; }
+.terminal-failure form {
+  margin-top: 24px;
+}
 * {
   box-sizing: border-box;
 }

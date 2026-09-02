@@ -12,6 +12,7 @@ const createConfirmation = makeFunctionReference<
     browserTokenHash: string;
     incidentKey: string;
     tokenHash: string;
+    completionTokenHash: string;
     expiresAt: string;
   },
   { status: "PENDING"; created: boolean; expiresAt: string }
@@ -41,6 +42,7 @@ const tenantId = "demo_sahaay_home_services";
 const now = new Date().toISOString();
 const expiresAt = new Date(Date.parse(now) + 30 * 60 * 1000).toISOString();
 const tokenHash = "a".repeat(64);
+const completionTokenHash = "c".repeat(64);
 
 async function setupDecision() {
   const database = convexTest(schema, modules);
@@ -170,6 +172,7 @@ async function create(database: Awaited<ReturnType<typeof setupDecision>>["datab
   return database.mutation(createConfirmation, {
     ...workerAccess,
     tokenHash,
+    completionTokenHash,
     expiresAt,
   });
 }
@@ -199,6 +202,7 @@ describe("customer confirmation persistence", () => {
       incidentId: ids.incidentId,
       decisionId: ids.decisionId,
       tokenHash,
+      completionTokenHash,
       status: "PENDING",
       requestConfirmedByCustomer: false,
       bookingVersion: 1,
@@ -230,6 +234,7 @@ describe("customer confirmation persistence", () => {
       30 * 60 * 1000,
     );
     expect(JSON.stringify(stored[0])).not.toContain("rawToken");
+    expect(stored[0]!.completionTokenHash).not.toBe(stored[0]!.tokenHash);
     expect(await database.run((context) => context.db.query("bookings").collect())).toEqual(
       bookingsBefore,
     );
@@ -380,6 +385,7 @@ describe("customer confirmation persistence", () => {
       database.mutation(createConfirmation, {
         ...workerAccess,
         tokenHash,
+        completionTokenHash,
         expiresAt: "2026-09-01T10:29:59.999Z",
       }),
     ).rejects.toThrow("Confirmation must expire exactly 30 minutes after creation.");

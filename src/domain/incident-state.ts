@@ -11,6 +11,9 @@ export type IncidentStatus =
   | "ACTION_EXECUTING"
   | "ACTION_EXECUTED"
   | "COMPLETION_PENDING"
+  | "AWAITING_COMPLETION_RESPONSE"
+  | "VERIFIED"
+  | "DISPUTED"
   | "AWAITING_HUMAN_REVIEW";
 
 export type IncidentEvent =
@@ -33,7 +36,11 @@ export type IncidentEvent =
   | { readonly type: "ACTION_FAILS" }
   | { readonly type: "ACTION_ABORTS" }
   | { readonly type: "ACTION_REQUIRES_RECONCILIATION" }
-  | { readonly type: "MARK_COMPLETION_PENDING" };
+  | { readonly type: "MARK_COMPLETION_PENDING" }
+  | { readonly type: "SUBMIT_COMPLETION" }
+  | { readonly type: "CUSTOMER_ACKNOWLEDGES" }
+  | { readonly type: "CUSTOMER_RAISES_ISSUE" }
+  | { readonly type: "REQUIRE_COMPLETION_REVIEW" };
 
 export interface TransitionContext {
   readonly hasConfirmedTranscript?: boolean;
@@ -60,7 +67,11 @@ export interface TransitionResult {
     | "action_failed"
     | "action_aborted"
     | "action_reconciliation_required"
-    | "completion_pending";
+    | "completion_pending"
+    | "completion_submitted"
+    | "customer_acknowledged"
+    | "customer_raised_issue"
+    | "completion_review_required";
 }
 
 export class InvalidIncidentTransitionError extends Error {
@@ -181,6 +192,25 @@ export function transitionIncident(
         };
       break;
     case "COMPLETION_PENDING":
+      if (event.type === "SUBMIT_COMPLETION")
+        return {
+          nextStatus: "AWAITING_COMPLETION_RESPONSE",
+          auditEvent: "completion_submitted",
+        };
+      break;
+    case "AWAITING_COMPLETION_RESPONSE":
+      if (event.type === "CUSTOMER_ACKNOWLEDGES")
+        return { nextStatus: "VERIFIED", auditEvent: "customer_acknowledged" };
+      if (event.type === "CUSTOMER_RAISES_ISSUE")
+        return { nextStatus: "DISPUTED", auditEvent: "customer_raised_issue" };
+      if (event.type === "REQUIRE_COMPLETION_REVIEW")
+        return {
+          nextStatus: "AWAITING_HUMAN_REVIEW",
+          auditEvent: "completion_review_required",
+        };
+      break;
+    case "VERIFIED":
+    case "DISPUTED":
     case "AWAITING_HUMAN_REVIEW":
       break;
     default:

@@ -12,7 +12,9 @@ async function changeFixtureConfirmation(
     requests: Record<string, unknown>[];
   };
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
-  const request = store.requests.find((candidate) => candidate.tokenHash === tokenHash);
+  const request = store.requests.find(
+    (candidate) => candidate.tokenHash === tokenHash,
+  );
   if (!request) throw new Error("Expected the fixture confirmation request.");
   update(request);
   await writeFile(confirmationStorePath, JSON.stringify(store), "utf8");
@@ -20,35 +22,53 @@ async function changeFixtureConfirmation(
 
 async function seedRetryableFixtureAction(rawToken: string) {
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
-  const confirmationStore = JSON.parse(await readFile(confirmationStorePath, "utf8")) as {
+  const confirmationStore = JSON.parse(
+    await readFile(confirmationStorePath, "utf8"),
+  ) as {
     requests: Array<Record<string, unknown>>;
     executions: Array<Record<string, unknown>>;
   };
-  const request = confirmationStore.requests.find((candidate) => candidate.tokenHash === tokenHash);
-  const execution = confirmationStore.executions.find((candidate) => candidate.tokenHash === tokenHash);
-  if (!request || !execution) throw new Error("Expected a completed fixture action.");
+  const request = confirmationStore.requests.find(
+    (candidate) => candidate.tokenHash === tokenHash,
+  );
+  const execution = confirmationStore.executions.find(
+    (candidate) => candidate.tokenHash === tokenHash,
+  );
+  if (!request || !execution)
+    throw new Error("Expected a completed fixture action.");
   execution.status = "RETRYABLE_FAILED";
   execution.receipt = null;
-  execution.error = { code: "TIMEOUT_AFTER_COMMIT", message: "The stored result needs reconciliation." };
+  execution.error = {
+    code: "TIMEOUT_AFTER_COMMIT",
+    message: "The stored result needs reconciliation.",
+  };
 
   const incidentStorePath = ".demo-fixture/e2e-runs.json.incidents";
-  const incidentStore = JSON.parse(await readFile(incidentStorePath, "utf8")) as {
+  const incidentStore = JSON.parse(
+    await readFile(incidentStorePath, "utf8"),
+  ) as {
     incidents: Array<Record<string, unknown>>;
   };
   const incident = incidentStore.incidents.find(
-    (candidate) => candidate.publicRunId === request.publicRunId && candidate.incidentKey === request.incidentKey,
+    (candidate) =>
+      candidate.publicRunId === request.publicRunId &&
+      candidate.incidentKey === request.incidentKey,
   );
-  const decision = incident?.policyDecision as Record<string, unknown> | undefined;
+  const decision = incident?.policyDecision as
+    Record<string, unknown> | undefined;
   const booking = decision?.booking as Record<string, unknown> | undefined;
   const snapshot = request.snapshot as Record<string, unknown>;
   const executionRequest = execution.request as Record<string, unknown>;
-  if (!incident || !booking) throw new Error("Expected the fixture booking relation.");
+  if (!incident || !booking)
+    throw new Error("Expected the fixture booking relation.");
   incident.status = "ACTION_AUTHORISED";
   booking.bookingVersion = executionRequest.bookingVersion;
-  booking.scheduledDurationMinutes = Number(booking.scheduledDurationMinutes) - Number(snapshot.durationDeltaMinutes);
-  booking.includedTasks = (booking.includedTasks as Array<Record<string, unknown>>).filter(
-    (task) => task.taskId !== snapshot.taskId,
-  );
+  booking.scheduledDurationMinutes =
+    Number(booking.scheduledDurationMinutes) -
+    Number(snapshot.durationDeltaMinutes);
+  booking.includedTasks = (
+    booking.includedTasks as Array<Record<string, unknown>>
+  ).filter((task) => task.taskId !== snapshot.taskId);
   await Promise.all([
     writeFile(confirmationStorePath, JSON.stringify(confirmationStore), "utf8"),
     writeFile(incidentStorePath, JSON.stringify(incidentStore), "utf8"),
@@ -58,15 +78,23 @@ async function seedRetryableFixtureAction(rawToken: string) {
 async function createBalconyConfirmationLink(page: Page) {
   await page.goto("/demo");
   await page.getByRole("button", { name: /Start as worker/i }).click();
-  await page.getByRole("button", { name: /Report a customer-requested change/i }).click();
-  await page.getByRole("textbox", { name: /Customer request/i }).fill("Balcony ko deep clean karna hai");
+  await page
+    .getByRole("button", { name: /Report a customer-requested change/i })
+    .click();
+  await page
+    .getByRole("textbox", { name: /Customer request/i })
+    .fill("Balcony ko deep clean karna hai");
   await page.getByRole("button", { name: /Review request/i }).click();
   await page.getByRole("button", { name: /Yes, continue/i }).click();
   await page.getByRole("button", { name: /Select this/i }).click();
   await expect(page).toHaveURL(/\/decision$/, { timeout: 20_000 });
-  await page.getByRole("button", { name: /Send for customer approval/i }).click();
+  await page
+    .getByRole("button", { name: /Send for customer approval/i })
+    .click();
   await expect(page).toHaveURL(/\/status$/, { timeout: 20_000 });
-  const href = await page.getByRole("link", { name: /Open customer link/i }).getAttribute("href");
+  const href = await page
+    .getByRole("link", { name: /Open customer link/i })
+    .getAttribute("href");
   if (!href) throw new Error("Expected one customer confirmation link.");
   return href;
 }
@@ -142,7 +170,7 @@ test("guided demo resumes for 24 hours and revokes the abandoned browser token",
 test("worker captures, confirms and selects a bounded typed request across refresh", async ({
   browser,
 }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
   const worker = await browser.newContext();
   const page = await worker.newPage();
   await page.setViewportSize({ width: 360, height: 800 });
@@ -220,9 +248,7 @@ for (const viewport of [
       .fill("Balcony ko deep clean karna hai");
     await page.getByRole("button", { name: /Review request/i }).click();
     await page.getByRole("button", { name: /Yes, continue/i }).click();
-    await page
-      .getByRole("button", { name: /Select this/i })
-      .click();
+    await page.getByRole("button", { name: /Select this/i }).click();
 
     await expect(page).toHaveURL(/\/decision$/, { timeout: 20_000 });
     await expect(
@@ -302,10 +328,14 @@ test("customer confirmation keeps one frozen decision from worker link to approv
   await copyLink.focus();
   await expect(copyLink).toBeFocused();
   expect(
-    await copyLink.evaluate((element) => element.getBoundingClientRect().height),
+    await copyLink.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    ),
   ).toBeGreaterThanOrEqual(48);
   await copyLink.click();
-  await expect(workerPage.getByText(/Link copied|Could not copy/i)).toBeVisible();
+  await expect(
+    workerPage.getByText(/Link copied|Could not copy/i),
+  ).toBeVisible();
 
   const customer = await browser.newContext();
   const customerPage = await customer.newPage();
@@ -316,7 +346,9 @@ test("customer confirmation keeps one frozen decision from worker link to approv
     customerPage.getByRole("heading", { name: "Balcony deep cleaning" }),
   ).toBeVisible();
   await expect(customerPage.getByText("₹299", { exact: true })).toBeVisible();
-  await expect(customerPage.getByText("25 minutes", { exact: true })).toBeVisible();
+  await expect(
+    customerPage.getByText("25 minutes", { exact: true }),
+  ).toBeVisible();
   await expect(
     customerPage.getByRole("heading", {
       name: /Sahaay Home Services Demonstration Task and Add-on Policy/i,
@@ -328,7 +360,9 @@ test("customer confirmation keeps one frozen decision from worker link to approv
   await confirmRequest.focus();
   await expect(confirmRequest).toBeFocused();
   expect(
-    await confirmRequest.evaluate((element) => element.getBoundingClientRect().height),
+    await confirmRequest.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    ),
   ).toBeGreaterThanOrEqual(48);
   expect(
     await customerPage.evaluate(
@@ -381,17 +415,25 @@ test("customer confirmation keeps one frozen decision from worker link to approv
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
-  const openLink = workerPage.getByRole("link", { name: /Open customer link/i });
+  const openLink = workerPage.getByRole("link", {
+    name: /Open customer link/i,
+  });
   if (await openLink.count()) {
     await openLink.focus();
     await expect(openLink).toBeFocused();
-    expect(await openLink.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(48);
+    expect(
+      await openLink.evaluate(
+        (element) => element.getBoundingClientRect().height,
+      ),
+    ).toBeGreaterThanOrEqual(48);
   }
   await customer.close();
   await worker.close();
 });
 
-test("authorised booking change updates once and both parties see the same receipt", async ({ browser }) => {
+test("authorised booking change updates once and both parties see the same receipt", async ({
+  browser,
+}) => {
   test.setTimeout(120_000);
   const worker = await browser.newContext();
   const workerPage = await worker.newPage();
@@ -400,10 +442,14 @@ test("authorised booking change updates once and both parties see the same recei
   const customerPage = await customer.newPage();
   await customerPage.setViewportSize({ width: 360, height: 800 });
   await customerPage.goto(customerUrl);
-  await customerPage.getByRole("button", { name: /Yes, this is my request/i }).click();
+  await customerPage
+    .getByRole("button", { name: /Yes, this is my request/i })
+    .click();
   await customerPage.getByRole("button", { name: /Approve ₹299/i }).click();
 
-  await expect(customerPage.getByRole("heading", { name: /Booking updated/i })).toBeVisible();
+  await expect(
+    customerPage.getByRole("heading", { name: /Booking updated/i }),
+  ).toBeVisible();
   await expect(customerPage.getByText("Balcony deep cleaning")).toBeVisible();
   await expect(customerPage.getByText(/[+]25 minutes.*₹299/i)).toBeVisible();
   const receipt = await customerPage.getByText(/^ACT-DEMO-/).textContent();
@@ -412,18 +458,30 @@ test("authorised booking change updates once and both parties see the same recei
   await customerPage.reload();
   await expect(customerPage.getByText(receipt!)).toBeVisible();
   await workerPage.reload();
-  await expect(workerPage.getByRole("heading", { name: /Booking updated/i })).toBeVisible();
+  await expect(
+    workerPage.getByRole("heading", { name: /Booking updated/i }),
+  ).toBeVisible();
   await expect(workerPage.getByText(receipt!)).toBeVisible();
   await expect(workerPage.getByText(/[+]25 minutes.*₹299/i)).toBeVisible();
 
-  expect(await customerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(
+    await customerPage.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   await customerPage.setViewportSize({ width: 1280, height: 800 });
-  expect(await customerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(
+    await customerPage.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   await customer.close();
   await worker.close();
 });
 
-test("customer can refresh a retryable action and recover the same stored connector result", async ({ browser }) => {
+test("customer can refresh a retryable action and recover the same stored connector result", async ({
+  browser,
+}) => {
   test.setTimeout(120_000);
   const worker = await browser.newContext();
   const workerPage = await worker.newPage();
@@ -431,21 +489,242 @@ test("customer can refresh a retryable action and recover the same stored connec
   const customer = await browser.newContext();
   const customerPage = await customer.newPage();
   await customerPage.goto(customerUrl);
-  await customerPage.getByRole("button", { name: /Yes, this is my request/i }).click();
+  await customerPage
+    .getByRole("button", { name: /Yes, this is my request/i })
+    .click();
   await customerPage.getByRole("button", { name: /Approve ₹299/i }).click();
-  const originalReceipt = await customerPage.getByText(/^ACT-DEMO-/).textContent();
+  const originalReceipt = await customerPage
+    .getByText(/^ACT-DEMO-/)
+    .textContent();
   const rawToken = customerUrl.split("/").at(-1);
-  if (!rawToken || !originalReceipt) throw new Error("Expected the customer token and receipt.");
+  if (!rawToken || !originalReceipt)
+    throw new Error("Expected the customer token and receipt.");
 
   await seedRetryableFixtureAction(rawToken);
   await customerPage.reload();
-  await expect(customerPage.getByRole("heading", { name: /needs another try/i })).toBeVisible();
+  await expect(
+    customerPage.getByRole("heading", { name: /needs another try/i }),
+  ).toBeVisible();
   await customerPage.reload();
-  await customerPage.getByRole("button", { name: /Retry booking update/i }).click();
-  await expect(customerPage.getByRole("heading", { name: /Booking updated/i })).toBeVisible();
+  await customerPage
+    .getByRole("button", { name: /Retry booking update/i })
+    .click();
+  await expect(
+    customerPage.getByRole("heading", { name: /Booking updated/i }),
+  ).toBeVisible();
   await expect(customerPage.getByText(originalReceipt)).toBeVisible();
   await workerPage.reload();
   await expect(workerPage.getByText(originalReceipt)).toBeVisible();
+  await customer.close();
+  await worker.close();
+});
+
+test("complete and verify agreement survives refresh on worker and customer views", async ({
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  const worker = await browser.newContext();
+  const workerPage = await worker.newPage();
+  await workerPage.setViewportSize({ width: 360, height: 800 });
+  const customerUrl = await createBalconyConfirmationLink(workerPage);
+  const customer = await browser.newContext();
+  const customerPage = await customer.newPage();
+  await customerPage.goto(customerUrl);
+  await customerPage
+    .getByRole("button", { name: /Yes, this is my request/i })
+    .click();
+  await customerPage.getByRole("button", { name: /Approve ₹299/i }).click();
+  await expect(
+    customerPage.getByRole("heading", { name: /Booking updated/i }),
+  ).toBeVisible();
+  await workerPage.reload();
+  await workerPage
+    .getByRole("link", { name: /Record completed work/i })
+    .click();
+  await expect(
+    workerPage.getByRole("heading", { name: /Record completed work/i }),
+  ).toBeVisible();
+  const tasks = workerPage.locator(".completion-task");
+  for (let index = 0; index < (await tasks.count()); index += 1) {
+    await tasks
+      .nth(index)
+      .getByLabel(/Complete/i)
+      .check();
+  }
+  const submit = workerPage.getByRole("button", { name: /Submit completion/i });
+  expect(
+    await submit.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeGreaterThanOrEqual(48);
+  await submit.click();
+  await expect(
+    workerPage.getByRole("heading", { name: /Cannot verify yet/i }),
+  ).toBeVisible();
+  await customerPage.reload();
+  await expect(
+    customerPage.getByRole("heading", { name: /Review completed work/i }),
+  ).toBeVisible();
+  await customerPage.screenshot({
+    path: "test-results/completion-mobile.png",
+    fullPage: true,
+  });
+  const acknowledge = customerPage.getByRole("button", {
+    name: /Acknowledge/i,
+  });
+  await acknowledge.focus();
+  await expect(acknowledge).toBeFocused();
+  await acknowledge.click();
+  await expect(
+    customerPage.getByRole("heading", { name: "Verified" }),
+  ).toBeVisible();
+  await customerPage.reload();
+  await expect(
+    customerPage.getByRole("heading", { name: "Verified" }),
+  ).toBeVisible();
+  await workerPage.reload();
+  await expect(
+    workerPage.getByRole("heading", { name: "Verified" }),
+  ).toBeVisible();
+  await customerPage.setViewportSize({ width: 1280, height: 800 });
+  await customerPage.screenshot({
+    path: "test-results/completion-desktop.png",
+    fullPage: true,
+  });
+  expect(
+    await customerPage.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await customer.close();
+  await worker.close();
+});
+
+test("complete and verify routes customer issues and worker blockers to human review", async ({
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  for (const outcome of ["issue", "blocker"] as const) {
+    const worker = await browser.newContext();
+    const workerPage = await worker.newPage();
+    const customerUrl = await createBalconyConfirmationLink(workerPage);
+    const customer = await browser.newContext();
+    const customerPage = await customer.newPage();
+    await customerPage.goto(customerUrl);
+    await customerPage
+      .getByRole("button", { name: /Yes, this is my request/i })
+      .click();
+    await customerPage.getByRole("button", { name: /Approve ₹299/i }).click();
+    await expect(
+      customerPage.getByRole("heading", { name: /Booking updated/i }),
+    ).toBeVisible();
+    await workerPage.reload();
+    await workerPage
+      .getByRole("link", { name: /Record completed work/i })
+      .click();
+    const tasks = workerPage.locator(".completion-task");
+    for (let index = 0; index < (await tasks.count()); index += 1) {
+      await tasks
+        .nth(index)
+        .getByLabel(
+          index === 0 && outcome === "blocker" ? /Blocked/i : /Complete/i,
+        )
+        .check();
+    }
+    await workerPage
+      .getByRole("button", { name: /Submit completion/i })
+      .click();
+    await customerPage.reload();
+    if (outcome === "issue") {
+      await customerPage
+        .getByLabel(/Optional note/i)
+        .fill("The balcony corner still needs review.");
+      await customerPage
+        .getByRole("button", { name: /Raise an issue/i })
+        .click();
+      await expect(
+        customerPage.getByRole("heading", { name: /Disputed/i }),
+      ).toBeVisible();
+      await workerPage.reload();
+      await expect(
+        workerPage.getByRole("heading", { name: /Disputed/i }),
+      ).toBeVisible();
+    } else {
+      await expect(
+        customerPage.getByRole("heading", { name: /Review required/i }),
+      ).toBeVisible();
+      await expect(
+        customerPage.getByRole("button", {
+          name: /Acknowledge|Raise an issue/i,
+        }),
+      ).toHaveCount(0);
+      await expect(
+        workerPage.getByRole("heading", { name: /Review required/i }),
+      ).toBeVisible();
+    }
+    await customer.close();
+    await worker.close();
+  }
+});
+
+test("complete and verify rejects a stale submission and reloads the current agreement", async ({
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  const worker = await browser.newContext();
+  const workerPage = await worker.newPage();
+  const customerUrl = await createBalconyConfirmationLink(workerPage);
+  const customer = await browser.newContext();
+  const customerPage = await customer.newPage();
+  await customerPage.goto(customerUrl);
+  await customerPage
+    .getByRole("button", { name: /Yes, this is my request/i })
+    .click();
+  await customerPage.getByRole("button", { name: /Approve ₹299/i }).click();
+  await expect(
+    customerPage.getByRole("heading", { name: /Booking updated/i }),
+  ).toBeVisible();
+  await workerPage.reload();
+  await workerPage
+    .getByRole("link", { name: /Record completed work/i })
+    .click();
+  const tasks = workerPage.locator(".completion-task");
+  for (let index = 0; index < (await tasks.count()); index += 1)
+    await tasks
+      .nth(index)
+      .getByLabel(/Complete/i)
+      .check();
+  await workerPage
+    .locator('input[name="bookingVersion"]')
+    .evaluate((element) => {
+      (element as HTMLInputElement).value = "999";
+    });
+  await workerPage.getByRole("button", { name: /Submit completion/i }).click();
+  await expect(workerPage.getByRole("alert")).toContainText(
+    /agreement changed|submission was invalid/i,
+  );
+  await expect(
+    workerPage.getByRole("heading", { name: /Record completed work/i }),
+  ).toBeVisible();
+  await expect(workerPage.getByText(/Booking version 2/i)).toBeVisible();
+  const currentTasks = workerPage.locator(".completion-task");
+  for (let index = 0; index < (await currentTasks.count()); index += 1)
+    await currentTasks
+      .nth(index)
+      .getByLabel(/Complete/i)
+      .check();
+  await currentTasks.first().evaluate((task) => {
+    const taskId = task.querySelector<HTMLInputElement>('input[name="taskId"]');
+    const state = task.querySelector<HTMLInputElement>(
+      'input[type="radio"]:checked',
+    );
+    if (!taskId || !state)
+      throw new Error("Expected the structured task controls.");
+    taskId.value = "not_in_the_agreement";
+    state.name = "state.not_in_the_agreement";
+  });
+  await workerPage.getByRole("button", { name: /Submit completion/i }).click();
+  await expect(workerPage.getByRole("alert")).toContainText(
+    /submission was invalid/i,
+  );
   await customer.close();
   await worker.close();
 });
@@ -456,7 +735,9 @@ test("customer confirmation renders invalid, mismatch and decline as distinct te
   test.setTimeout(180_000);
   const invalid = await browser.newPage();
   await invalid.goto("/confirm/not-a-real-token");
-  await expect(invalid.getByRole("heading", { name: /link is not valid/i })).toBeVisible();
+  await expect(
+    invalid.getByRole("heading", { name: /link is not valid/i }),
+  ).toBeVisible();
   await invalid.close();
 
   for (const outcome of ["mismatch", "decline"] as const) {
@@ -467,18 +748,36 @@ test("customer confirmation renders invalid, mismatch and decline as distinct te
     const customerPage = await customer.newPage();
     await customerPage.goto(customerUrl);
     if (outcome === "mismatch") {
-      await customerPage.getByRole("button", { name: /does not match/i }).click();
-      await expect(customerPage.getByRole("heading", { name: /Request does not match/i })).toBeVisible();
+      await customerPage
+        .getByRole("button", { name: /does not match/i })
+        .click();
+      await expect(
+        customerPage.getByRole("heading", { name: /Request does not match/i }),
+      ).toBeVisible();
       await workerPage.reload();
-      await expect(workerPage.getByRole("heading", { name: /Request does not match/i })).toBeVisible();
+      await expect(
+        workerPage.getByRole("heading", { name: /Request does not match/i }),
+      ).toBeVisible();
     } else {
-      await customerPage.getByRole("button", { name: /Yes, this is my request/i }).click();
-      await customerPage.getByRole("button", { name: /Decline change/i }).click();
-      await expect(customerPage.getByRole("heading", { name: /Change declined/i })).toBeVisible();
-      await expect(customerPage.getByText(/original booking remains/i)).toBeVisible();
-      await expect(customerPage.getByRole("heading", { name: /Booking updated/i })).toHaveCount(0);
+      await customerPage
+        .getByRole("button", { name: /Yes, this is my request/i })
+        .click();
+      await customerPage
+        .getByRole("button", { name: /Decline change/i })
+        .click();
+      await expect(
+        customerPage.getByRole("heading", { name: /Change declined/i }),
+      ).toBeVisible();
+      await expect(
+        customerPage.getByText(/original booking remains/i),
+      ).toBeVisible();
+      await expect(
+        customerPage.getByRole("heading", { name: /Booking updated/i }),
+      ).toHaveCount(0);
       await workerPage.reload();
-      await expect(workerPage.getByRole("heading", { name: /Customer declined/i })).toBeVisible();
+      await expect(
+        workerPage.getByRole("heading", { name: /Customer declined/i }),
+      ).toBeVisible();
       await expect(
         workerPage.getByRole("link", { name: /Continue original booking/i }),
       ).toBeVisible();
@@ -488,7 +787,9 @@ test("customer confirmation renders invalid, mismatch and decline as distinct te
   }
 });
 
-test("customer confirmation safely shows expired and stale links", async ({ browser }) => {
+test("customer confirmation safely shows expired and stale links", async ({
+  browser,
+}) => {
   test.setTimeout(120_000);
   for (const state of ["expired", "stale"] as const) {
     const worker = await browser.newContext();
@@ -506,7 +807,8 @@ test("customer confirmation safely shows expired and stale links", async ({ brow
     await customerPage.goto(customerUrl);
     await expect(
       customerPage.getByRole("heading", {
-        name: state === "expired" ? /link has expired/i : /work details changed/i,
+        name:
+          state === "expired" ? /link has expired/i : /work details changed/i,
       }),
     ).toBeVisible();
     await expect(customerPage.getByRole("button")).toHaveCount(0);

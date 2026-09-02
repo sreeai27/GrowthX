@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
@@ -44,10 +44,14 @@ export const confirmationSnapshotSchema = z
     bookingKey: z.literal("DEMO-4821"),
     serviceName: z.string().min(1),
     includedTasks: z.array(
-      z.object({ taskId: z.string().min(1), displayName: z.string().min(1) }).strict(),
+      z
+        .object({ taskId: z.string().min(1), displayName: z.string().min(1) })
+        .strict(),
     ),
     resultingTasks: z.array(
-      z.object({ taskId: z.string().min(1), displayName: z.string().min(1) }).strict(),
+      z
+        .object({ taskId: z.string().min(1), displayName: z.string().min(1) })
+        .strict(),
     ),
     taskId: z.string().min(1),
     taskDisplayName: z.string().min(1),
@@ -62,19 +66,32 @@ export const confirmationSnapshotSchema = z
   })
   .strict();
 
-export const actionExecutionViewSchema = z.object({
-  status: z.enum(["PENDING", "SUCCEEDED", "RETRYABLE_FAILED", "PERMANENT_FAILED", "RECONCILIATION_REQUIRED"]),
-  attemptCount: z.number().int().positive(),
-  receipt: actionReceiptSchema.pick({
-    connector: true,
-    externalActionId: true,
-    previousBookingVersion: true,
-    resultingBookingVersion: true,
-    status: true,
-    executedAt: true,
-  }).nullable(),
-  error: z.object({ code: z.string(), message: z.string() }).strict().nullable(),
-}).strict();
+export const actionExecutionViewSchema = z
+  .object({
+    status: z.enum([
+      "PENDING",
+      "SUCCEEDED",
+      "RETRYABLE_FAILED",
+      "PERMANENT_FAILED",
+      "RECONCILIATION_REQUIRED",
+    ]),
+    attemptCount: z.number().int().positive(),
+    receipt: actionReceiptSchema
+      .pick({
+        connector: true,
+        externalActionId: true,
+        previousBookingVersion: true,
+        resultingBookingVersion: true,
+        status: true,
+        executedAt: true,
+      })
+      .nullable(),
+    error: z
+      .object({ code: z.string(), message: z.string() })
+      .strict()
+      .nullable(),
+  })
+  .strict();
 
 export const workerConfirmationViewSchema = z
   .object({
@@ -122,9 +139,14 @@ const createdSchema = z
   })
   .strict();
 const confirmRequestResultSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("ACTIVE"), requestConfirmed: z.literal(true) }).strict(),
   z
-    .object({ kind: z.literal("RECORDED"), status: z.literal("REQUEST_MISMATCH") })
+    .object({ kind: z.literal("ACTIVE"), requestConfirmed: z.literal(true) })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("RECORDED"),
+      status: z.literal("REQUEST_MISMATCH"),
+    })
     .strict(),
   minimalPublicState("EXPIRED"),
   minimalPublicState("STALE"),
@@ -140,8 +162,12 @@ const responseResultSchema = z.discriminatedUnion("kind", [
   minimalPublicState("STALE"),
 ]);
 
-export type WorkerConfirmationView = z.infer<typeof workerConfirmationViewSchema>;
-export type CustomerConfirmationView = z.infer<typeof customerConfirmationViewSchema>;
+export type WorkerConfirmationView = z.infer<
+  typeof workerConfirmationViewSchema
+>;
+export type CustomerConfirmationView = z.infer<
+  typeof customerConfirmationViewSchema
+>;
 export type ConfirmationSnapshot = z.infer<typeof confirmationSnapshotSchema>;
 
 export type ActionExecutionView = z.infer<typeof actionExecutionViewSchema>;
@@ -154,12 +180,17 @@ interface WorkerAccess extends Record<string, Value> {
 
 interface CreateInput extends WorkerAccess {
   readonly tokenHash: string;
+  readonly completionTokenHash: string;
   readonly expiresAt: string;
 }
 
 export interface CustomerConfirmationGateway {
-  createConfirmation(input: CreateInput): Promise<z.infer<typeof createdSchema>>;
-  getWorkerConfirmation(input: WorkerAccess): Promise<WorkerConfirmationView | null>;
+  createConfirmation(
+    input: CreateInput,
+  ): Promise<z.infer<typeof createdSchema>>;
+  getWorkerConfirmation(
+    input: WorkerAccess,
+  ): Promise<WorkerConfirmationView | null>;
   getCustomerConfirmation(tokenHash: string): Promise<CustomerConfirmationView>;
   confirmCustomerRequest(
     tokenHash: string,
@@ -196,7 +227,11 @@ const respondRef = makeFunctionReference<
   { tokenHash: string; response: "APPROVE" | "DECLINE" },
   unknown
 >("confirmations:respond");
-const executeActionRef = makeFunctionReference<"action", { tokenHash: string }, unknown>("actionExecutions:execute");
+const executeActionRef = makeFunctionReference<
+  "action",
+  { tokenHash: string },
+  unknown
+>("actionExecutions:execute");
 
 function convexGateway(convexUrl: string): CustomerConfirmationGateway {
   const client = new ConvexHttpClient(convexUrl);
@@ -206,7 +241,9 @@ function convexGateway(convexUrl: string): CustomerConfirmationGateway {
     },
     async getWorkerConfirmation(input) {
       const result = await client.mutation(getWorkerRef, input);
-      return result === null ? null : workerConfirmationViewSchema.parse(result);
+      return result === null
+        ? null
+        : workerConfirmationViewSchema.parse(result);
     },
     async getCustomerConfirmation(tokenHash) {
       return customerConfirmationViewSchema.parse(
@@ -224,20 +261,25 @@ function convexGateway(convexUrl: string): CustomerConfirmationGateway {
       );
     },
     executeApprovedAction(tokenHash) {
-      return actionExecutionViewSchema.parseAsync(client.action(executeActionRef, { tokenHash }));
+      return actionExecutionViewSchema.parseAsync(
+        client.action(executeActionRef, { tokenHash }),
+      );
     },
   };
 }
 
-const fixtureRequestSchema = workerConfirmationViewSchema.omit({ execution: true }).extend({
-  publicRunId: z.string().min(1),
-  incidentKey: z.string().min(1),
-  tokenHash: z.string().regex(/^[a-f0-9]{64}$/),
-  bookingVersion: z.number().int().positive(),
-  decisionHash: z.string().min(1),
-  sourceVersion: z.string().min(1),
-  createdAt: z.string().datetime(),
-});
+const fixtureRequestSchema = workerConfirmationViewSchema
+  .omit({ execution: true })
+  .extend({
+    publicRunId: z.string().min(1),
+    incidentKey: z.string().min(1),
+    tokenHash: z.string().regex(/^[a-f0-9]{64}$/),
+    completionTokenHash: z.string().regex(/^[a-f0-9]{64}$/),
+    bookingVersion: z.number().int().positive(),
+    decisionHash: z.string().min(1),
+    sourceVersion: z.string().min(1),
+    createdAt: z.string().datetime(),
+  });
 type FixtureStore = {
   requests: Array<z.infer<typeof fixtureRequestSchema>>;
   executions: FixtureExecution[];
@@ -248,41 +290,85 @@ const fixtureExecutionSchema = actionExecutionViewSchema.extend({
   request: actionExecutionRequestSchema,
   receipt: actionReceiptSchema.nullable(),
 });
-const fixtureConnectorReceiptSchema = z.object({
-  tenantId: z.literal("demo_sahaay_home_services"),
-  idempotencyKey: z.string().regex(/^[a-f0-9]{64}$/),
-  requestHash: z.string().regex(/^[a-f0-9]{64}$/),
-  receipt: actionReceiptSchema,
-}).strict();
+const fixtureConnectorReceiptSchema = z
+  .object({
+    tenantId: z.literal("demo_sahaay_home_services"),
+    idempotencyKey: z.string().regex(/^[a-f0-9]{64}$/),
+    requestHash: z.string().regex(/^[a-f0-9]{64}$/),
+    receipt: actionReceiptSchema,
+  })
+  .strict();
 type FixtureExecution = z.infer<typeof fixtureExecutionSchema>;
-export function projectFixtureExecution(execution: FixtureExecution): ActionExecutionView {
+export function projectFixtureExecution(
+  execution: FixtureExecution,
+): ActionExecutionView {
   return actionExecutionViewSchema.parse({
     status: execution.status,
     attemptCount: execution.attemptCount,
-    receipt: execution.receipt ? {
-      connector: execution.receipt.connector,
-      externalActionId: execution.receipt.externalActionId,
-      previousBookingVersion: execution.receipt.previousBookingVersion,
-      resultingBookingVersion: execution.receipt.resultingBookingVersion,
-      status: execution.receipt.status,
-      executedAt: execution.receipt.executedAt,
-    } : null,
+    receipt: execution.receipt
+      ? {
+          connector: execution.receipt.connector,
+          externalActionId: execution.receipt.externalActionId,
+          previousBookingVersion: execution.receipt.previousBookingVersion,
+          resultingBookingVersion: execution.receipt.resultingBookingVersion,
+          status: execution.receipt.status,
+          executedAt: execution.receipt.executedAt,
+        }
+      : null,
     error: execution.error,
   });
 }
 const fixtureExecutionLocks = new Map<string, Promise<ActionExecutionView>>();
+const fixtureWriteLocks = new Map<string, Promise<void>>();
+
+async function writeFixtureFile(path: string, value: unknown) {
+  const previous = fixtureWriteLocks.get(path) ?? Promise.resolve();
+  const pending = previous
+    .catch(() => undefined)
+    .then(async () => {
+      await mkdir(dirname(path), { recursive: true });
+      const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+      await writeFile(temporary, JSON.stringify(value), {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          await rename(temporary, path);
+          return;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if ((code !== "EPERM" && code !== "EBUSY") || attempt === 5)
+            throw error;
+          await new Promise<void>((resolveDelay) =>
+            setTimeout(resolveDelay, 10 * 2 ** attempt),
+          );
+        }
+      }
+    });
+  fixtureWriteLocks.set(path, pending);
+  try {
+    await pending;
+  } finally {
+    if (fixtureWriteLocks.get(path) === pending) fixtureWriteLocks.delete(path);
+  }
+}
 const demonstrationBookingConnector = new MockBookingActionConnector();
+const legacyRequestSchema = z.preprocess((value) => {
+  if (typeof value !== "object" || value === null || "completionTokenHash" in value) return value;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.tokenHash !== "string") return value;
+  return { ...candidate, completionTokenHash: createHash("sha256").update(`completion-customer:v1:legacy:${candidate.tokenHash}`).digest("hex") };
+}, fixtureRequestSchema.extend({ tokenPrefix: z.string().optional() }).transform(({ tokenPrefix, ...request }) => { void tokenPrefix; return request; }));
 const legacyFixtureStoreSchema = z.object({
   requests: z.array(
-    fixtureRequestSchema
-      .extend({ tokenPrefix: z.string().optional() })
-      .transform(({ tokenPrefix, ...request }) => {
-        void tokenPrefix;
-        return request;
-      }),
+    legacyRequestSchema,
   ),
   executions: z.array(fixtureExecutionSchema).optional().default([]),
-  connectorReceipts: z.array(fixtureConnectorReceiptSchema).optional().default([]),
+  connectorReceipts: z
+    .array(fixtureConnectorReceiptSchema)
+    .optional()
+    .default([]),
 });
 
 export function parseConfirmationFixtureStore(raw: unknown): {
@@ -297,25 +383,33 @@ export function parseConfirmationFixtureStore(raw: unknown): {
     Array.isArray(raw.requests) &&
     raw.requests.some(
       (request) =>
-        typeof request === "object" && request !== null && "tokenPrefix" in request,
+        typeof request === "object" &&
+        request !== null &&
+        ("tokenPrefix" in request || !("completionTokenHash" in request)),
     );
   return { store, migrated };
 }
-const fixtureIncidentSchema = z.object({
-  publicRunId: z.string().min(1),
-  incidentKey: z.string().min(1),
-  status: z.string().min(1),
-  policyDecision: workerPolicyDecisionViewSchema.nullable().optional(),
-}).passthrough();
-const fixtureIncidentsSchema = z.object({ incidents: z.array(fixtureIncidentSchema) });
+const fixtureIncidentSchema = z
+  .object({
+    publicRunId: z.string().min(1),
+    incidentKey: z.string().min(1),
+    status: z.string().min(1),
+    policyDecision: workerPolicyDecisionViewSchema.nullable().optional(),
+  })
+  .passthrough();
+const fixtureIncidentsSchema = z.object({
+  incidents: z.array(fixtureIncidentSchema),
+});
 const fixtureRunsSchema = z.object({
   runs: z.array(
-    z.object({
-      publicRunId: z.string(),
-      browserTokenHash: z.string(),
-      status: z.enum(["ACTIVE", "ABANDONED"]),
-      resumeExpiresAt: z.string().datetime(),
-    }).passthrough(),
+    z
+      .object({
+        publicRunId: z.string(),
+        browserTokenHash: z.string(),
+        status: z.enum(["ACTIVE", "ABANDONED"]),
+        resumeExpiresAt: z.string().datetime(),
+      })
+      .passthrough(),
   ),
 });
 
@@ -331,15 +425,13 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
       }
       return store;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { requests: [], executions: [], connectorReceipts: [] };
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        return { requests: [], executions: [], connectorReceipts: [] };
       throw error;
     }
   }
   async function writeRequests(store: FixtureStore) {
-    await mkdir(dirname(requestsPath), { recursive: true });
-    const temporary = `${requestsPath}.${process.pid}.${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(store), { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, requestsPath);
+    await writeFixtureFile(requestsPath, store);
   }
   async function readIncidents() {
     return fixtureIncidentsSchema.parse(
@@ -347,9 +439,7 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
     );
   }
   async function writeIncidents(store: z.infer<typeof fixtureIncidentsSchema>) {
-    const temporary = `${incidentsPath}.${process.pid}.${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(store), { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, incidentsPath);
+    await writeFixtureFile(incidentsPath, store);
   }
   async function activeWorker(input: WorkerAccess) {
     const store = fixtureRunsSchema.parse(
@@ -390,11 +480,19 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
       ? ({ kind: "STALE", status: "STALE" } as const)
       : result;
   }
-  function executionView(store: FixtureStore, request: FixtureStore["requests"][number]) {
-    const execution = store.executions.find((candidate) => candidate.tokenHash === request.tokenHash);
+  function executionView(
+    store: FixtureStore,
+    request: FixtureStore["requests"][number],
+  ) {
+    const execution = store.executions.find(
+      (candidate) => candidate.tokenHash === request.tokenHash,
+    );
     return execution ? projectFixtureExecution(execution) : null;
   }
-  function workerView(store: FixtureStore, request: FixtureStore["requests"][number]) {
+  function workerView(
+    store: FixtureStore,
+    request: FixtureStore["requests"][number],
+  ) {
     return workerConfirmationViewSchema.parse({
       status: request.status,
       expiresAt: request.expiresAt,
@@ -426,13 +524,19 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
       });
     }
     if (result.kind === "ALREADY_USED") {
-      return { kind: "ALREADY_USED", status: result.status, snapshot: request.snapshot, execution: executionView(store, request) };
+      return {
+        kind: "ALREADY_USED",
+        status: result.status,
+        snapshot: request.snapshot,
+        execution: executionView(store, request),
+      };
     }
     return { kind: result.kind === "EXPIRED" ? "EXPIRED" : "STALE" };
   }
   return {
     async createConfirmation(input) {
-      if (!(await activeWorker(input))) throw new Error("Incident is unavailable.");
+      if (!(await activeWorker(input)))
+        throw new Error("Incident is unavailable.");
       const incidentStore = await readIncidents();
       const incident = incidentStore.incidents.find(
         (candidate) =>
@@ -440,7 +544,8 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
           candidate.incidentKey === input.incidentKey,
       );
       const decision = incident?.policyDecision;
-      if (!incident || !decision) throw new Error("Policy decision is unavailable.");
+      if (!incident || !decision)
+        throw new Error("Policy decision is unavailable.");
       const store = await readRequests();
       const existing = store.requests.find(
         (request) =>
@@ -448,10 +553,13 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
           request.incidentKey === input.incidentKey,
       );
       if (existing) return createdView(existing);
-      if (store.requests.some((request) => request.tokenHash === input.tokenHash)) {
+      if (
+        store.requests.some((request) => request.tokenHash === input.tokenHash || request.completionTokenHash === input.completionTokenHash)
+      ) {
         throw new Error("Confirmation token collision.");
       }
-      if (!decision.authority) throw new Error("Decision does not support customer confirmation.");
+      if (!decision.authority)
+        throw new Error("Decision does not support customer confirmation.");
       const createdAt = new Date().toISOString();
       const expiresAt = validateConfirmationCreation({
         createdAt,
@@ -467,7 +575,9 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
       const snapshot = buildConfirmationSnapshot({
         bookingKey: decision.booking.bookingKey,
         serviceName: decision.booking.serviceName,
-        includedTaskIds: decision.booking.includedTasks.map((task) => task.taskId),
+        includedTaskIds: decision.booking.includedTasks.map(
+          (task) => task.taskId,
+        ),
         catalogue: decision.booking.includedTasks,
         selectedTask: decision.selectedTask,
         durationDeltaMinutes: decision.outcome.durationDeltaMinutes,
@@ -480,6 +590,7 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
         publicRunId: input.publicRunId,
         incidentKey: input.incidentKey,
         tokenHash: input.tokenHash,
+        completionTokenHash: input.completionTokenHash,
         status: "PENDING",
         expiresAt,
         requestConfirmed: false,
@@ -531,22 +642,29 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
     },
     async confirmCustomerRequest(tokenHash, answer) {
       const store = await readRequests();
-      const request = store.requests.find((candidate) => candidate.tokenHash === tokenHash);
+      const request = store.requests.find(
+        (candidate) => candidate.tokenHash === tokenHash,
+      );
       if (!request) throw new Error("Confirmation request is invalid.");
       const relation = await currentDecision(request);
       const result = applyCustomerResponse({
-        now: new Date().toISOString(), expiresAt: request.expiresAt,
-        status: request.status, requestConfirmed: request.requestConfirmed,
+        now: new Date().toISOString(),
+        expiresAt: request.expiresAt,
+        status: request.status,
+        requestConfirmed: request.requestConfirmed,
         storedBookingVersion: request.bookingVersion,
         currentBookingVersion: relation.decision?.booking.bookingVersion ?? -1,
         storedDecisionHash: request.decisionHash,
         currentDecisionHash: relation.decision?.decisionHash ?? "__missing__",
         storedSourceVersion: request.sourceVersion,
-        currentSourceVersion: relation.decision?.authority?.version ?? "__missing__",
-        requestedResponse: answer === "YES" ? "CONFIRM_REQUEST" : "REPORT_MISMATCH",
+        currentSourceVersion:
+          relation.decision?.authority?.version ?? "__missing__",
+        requestedResponse:
+          answer === "YES" ? "CONFIRM_REQUEST" : "REPORT_MISMATCH",
       });
       if (result.kind === "REJECTED") {
-        if (result.reason === "ALREADY_USED") throw new Error("Confirmation request is already used.");
+        if (result.reason === "ALREADY_USED")
+          throw new Error("Confirmation request is already used.");
         if (result.reason === "REQUEST_NOT_CONFIRMED") {
           throw new Error("Customer request confirmation is unavailable.");
         }
@@ -556,7 +674,8 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
       }
       request.requestConfirmed = result.requestConfirmed;
       request.status = result.status;
-      request.respondedAt = answer === "MISMATCH" ? new Date().toISOString() : null;
+      request.respondedAt =
+        answer === "MISMATCH" ? new Date().toISOString() : null;
       if (relation.incident) relation.incident.status = result.incidentStatus;
       await Promise.all([writeRequests(store), writeIncidents(relation.store)]);
       return confirmRequestResultSchema.parse(
@@ -567,23 +686,30 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
     },
     async respondToConfirmation(tokenHash, response) {
       const store = await readRequests();
-      const request = store.requests.find((candidate) => candidate.tokenHash === tokenHash);
+      const request = store.requests.find(
+        (candidate) => candidate.tokenHash === tokenHash,
+      );
       if (!request) throw new Error("Confirmation request is invalid.");
       const relation = await currentDecision(request);
       const result = applyCustomerResponse({
-        now: new Date().toISOString(), expiresAt: request.expiresAt,
-        status: request.status, requestConfirmed: request.requestConfirmed,
+        now: new Date().toISOString(),
+        expiresAt: request.expiresAt,
+        status: request.status,
+        requestConfirmed: request.requestConfirmed,
         storedBookingVersion: request.bookingVersion,
         currentBookingVersion: relation.decision?.booking.bookingVersion ?? -1,
         storedDecisionHash: request.decisionHash,
         currentDecisionHash: relation.decision?.decisionHash ?? "__missing__",
         storedSourceVersion: request.sourceVersion,
-        currentSourceVersion: relation.decision?.authority?.version ?? "__missing__",
+        currentSourceVersion:
+          relation.decision?.authority?.version ?? "__missing__",
         requestedResponse: response,
       });
       if (result.kind === "REJECTED") {
-        if (result.reason === "REQUEST_NOT_CONFIRMED") throw new Error("Customer must confirm the request first.");
-        if (result.reason === "ALREADY_USED") throw new Error("Confirmation request is already used.");
+        if (result.reason === "REQUEST_NOT_CONFIRMED")
+          throw new Error("Customer must confirm the request first.");
+        if (result.reason === "ALREADY_USED")
+          throw new Error("Confirmation request is already used.");
         request.status = result.reason;
         await writeRequests(store);
         return responseResultSchema.parse({ kind: result.reason });
@@ -593,26 +719,47 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
         request.commercialResponse = response;
         request.respondedAt = new Date().toISOString();
         if (relation.incident) relation.incident.status = result.incidentStatus;
-        await Promise.all([writeRequests(store), writeIncidents(relation.store)]);
+        await Promise.all([
+          writeRequests(store),
+          writeIncidents(relation.store),
+        ]);
       }
-      return responseResultSchema.parse({ kind: result.kind, status: result.status });
+      return responseResultSchema.parse({
+        kind: result.kind,
+        status: result.status,
+      });
     },
-    async executeApprovedAction(tokenHash, connector = demonstrationBookingConnector) {
+    async executeApprovedAction(
+      tokenHash,
+      connector = demonstrationBookingConnector,
+    ) {
       const active = fixtureExecutionLocks.get(tokenHash);
       if (active) return active;
       const run = (async () => {
         const store = await readRequests();
-        const request = store.requests.find((candidate) => candidate.tokenHash === tokenHash);
+        const request = store.requests.find(
+          (candidate) => candidate.tokenHash === tokenHash,
+        );
         if (!request) throw new Error("Confirmation request is invalid.");
         const relation = await currentDecision(request);
         const decision = relation.decision;
-        if (!relation.incident || !decision || !decision.authority) throw new Error("Action authority is stale.");
-        const existing = store.executions.find((candidate) => candidate.tokenHash === tokenHash);
-        if (existing?.status === "SUCCEEDED" || existing?.status === "PERMANENT_FAILED" || existing?.status === "RECONCILIATION_REQUIRED") {
+        if (!relation.incident || !decision || !decision.authority)
+          throw new Error("Action authority is stale.");
+        const existing = store.executions.find(
+          (candidate) => candidate.tokenHash === tokenHash,
+        );
+        if (
+          existing?.status === "SUCCEEDED" ||
+          existing?.status === "PERMANENT_FAILED" ||
+          existing?.status === "RECONCILIATION_REQUIRED"
+        ) {
           return projectFixtureExecution(existing);
         }
         const storedConnectorReceipt = existing
-          ? store.connectorReceipts.find((candidate) => candidate.idempotencyKey === existing.request.idempotencyKey)
+          ? store.connectorReceipts.find(
+              (candidate) =>
+                candidate.idempotencyKey === existing.request.idempotencyKey,
+            )
           : null;
         const authorityChanged =
           request.bookingVersion !== decision.booking.bookingVersion ||
@@ -620,14 +767,26 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
           request.sourceVersion !== decision.authority.version;
         if (existing && storedConnectorReceipt && authorityChanged) {
           existing.status = "RECONCILIATION_REQUIRED";
-          existing.error = { code: "RECONCILIATION_REQUIRED", message: "The connector succeeded, but current booking authority changed before local finalization." };
+          existing.error = {
+            code: "RECONCILIATION_REQUIRED",
+            message:
+              "The connector succeeded, but current booking authority changed before local finalization.",
+          };
           relation.incident.status = "AWAITING_HUMAN_REVIEW";
-          await Promise.all([writeRequests(store), writeIncidents(relation.store)]);
+          await Promise.all([
+            writeRequests(store),
+            writeIncidents(relation.store),
+          ]);
           return projectFixtureExecution(existing);
         }
-        const recovering = existing?.status === "PENDING" || existing?.status === "RETRYABLE_FAILED";
+        const recovering =
+          existing?.status === "PENDING" ||
+          existing?.status === "RETRYABLE_FAILED";
         if (recovering) {
-          if (relation.incident.status !== "ACTION_EXECUTING" && relation.incident.status !== "ACTION_AUTHORISED") {
+          if (
+            relation.incident.status !== "ACTION_EXECUTING" &&
+            relation.incident.status !== "ACTION_AUTHORISED"
+          ) {
             throw new Error("Action authority changed before retry.");
           }
         } else if (relation.incident.status !== "ACTION_AUTHORISED") {
@@ -648,24 +807,60 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
           commercialResponse: request.commercialResponse,
           decisionState: decision.outcome.decisionState ?? "NOT_SUPPORTED",
           supportState: decision.outcome.supportState,
-          action: { type: "ADD_TASK", taskId: request.snapshot.taskId, priceDeltaMinor: request.snapshot.priceDeltaMinor, durationDeltaMinutes: request.snapshot.durationDeltaMinutes },
+          action: {
+            type: "ADD_TASK",
+            taskId: request.snapshot.taskId,
+            priceDeltaMinor: request.snapshot.priceDeltaMinor,
+            durationDeltaMinutes: request.snapshot.durationDeltaMinutes,
+          },
         });
-        if (existing && (existing.request.idempotencyKey !== executionRequest.idempotencyKey || existing.request.requestHash !== executionRequest.requestHash)) {
+        if (
+          existing &&
+          (existing.request.idempotencyKey !==
+            executionRequest.idempotencyKey ||
+            existing.request.requestHash !== executionRequest.requestHash)
+        ) {
           throw new Error("Idempotency key payload mismatch.");
         }
-        const record: FixtureExecution = fixtureExecutionSchema.parse(existing ? {
-          ...existing, status: "PENDING", attemptCount: existing.attemptCount + 1, error: null,
-        } : { tokenHash, request: executionRequest, status: "PENDING", attemptCount: 1, receipt: null, error: null });
-        if (existing) Object.assign(existing, record); else store.executions.push(record);
+        const record: FixtureExecution = fixtureExecutionSchema.parse(
+          existing
+            ? {
+                ...existing,
+                status: "PENDING",
+                attemptCount: existing.attemptCount + 1,
+                error: null,
+              }
+            : {
+                tokenHash,
+                request: executionRequest,
+                status: "PENDING",
+                attemptCount: 1,
+                receipt: null,
+                error: null,
+              },
+        );
+        if (existing) Object.assign(existing, record);
+        else store.executions.push(record);
         if (relation.incident.status === "ACTION_AUTHORISED") {
-          relation.incident.status = transitionIncident(relation.incident.status, { type: "START_ACTION" }, {}).nextStatus;
+          relation.incident.status = transitionIncident(
+            relation.incident.status,
+            { type: "START_ACTION" },
+            {},
+          ).nextStatus;
         }
-        await Promise.all([writeRequests(store), writeIncidents(relation.store)]);
+        await Promise.all([
+          writeRequests(store),
+          writeIncidents(relation.store),
+        ]);
         try {
           const storedConnectorReceipt = store.connectorReceipts.find(
-            (candidate) => candidate.idempotencyKey === executionRequest.idempotencyKey,
+            (candidate) =>
+              candidate.idempotencyKey === executionRequest.idempotencyKey,
           );
-          if (storedConnectorReceipt && storedConnectorReceipt.requestHash !== executionRequest.requestHash) {
+          if (
+            storedConnectorReceipt &&
+            storedConnectorReceipt.requestHash !== executionRequest.requestHash
+          ) {
             throw new Error("Connector idempotency payload mismatch.");
           }
           let receipt = storedConnectorReceipt?.receipt ?? null;
@@ -673,65 +868,133 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
             try {
               receipt = await connector.execute(executionRequest);
             } catch (error) {
-              const connectorError = error instanceof BookingActionConnectorError ? error : null;
+              const connectorError =
+                error instanceof BookingActionConnectorError ? error : null;
               const committedReceipt = connectorError?.outcomeUncertain
-                ? connector.getStoredReceipt?.(executionRequest.idempotencyKey) ?? null
+                ? (connector.getStoredReceipt?.(
+                    executionRequest.idempotencyKey,
+                  ) ?? null)
                 : null;
               if (committedReceipt) {
-                store.connectorReceipts.push(fixtureConnectorReceiptSchema.parse({
-                  tenantId: "demo_sahaay_home_services",
-                  idempotencyKey: executionRequest.idempotencyKey,
-                  requestHash: executionRequest.requestHash,
-                  receipt: committedReceipt,
-                }));
+                store.connectorReceipts.push(
+                  fixtureConnectorReceiptSchema.parse({
+                    tenantId: "demo_sahaay_home_services",
+                    idempotencyKey: executionRequest.idempotencyKey,
+                    requestHash: executionRequest.requestHash,
+                    receipt: committedReceipt,
+                  }),
+                );
                 await writeRequests(store);
               }
               throw error;
             }
-            store.connectorReceipts.push(fixtureConnectorReceiptSchema.parse({
-              tenantId: "demo_sahaay_home_services",
-              idempotencyKey: executionRequest.idempotencyKey,
-              requestHash: executionRequest.requestHash,
-              receipt,
-            }));
+            store.connectorReceipts.push(
+              fixtureConnectorReceiptSchema.parse({
+                tenantId: "demo_sahaay_home_services",
+                idempotencyKey: executionRequest.idempotencyKey,
+                requestHash: executionRequest.requestHash,
+                receipt,
+              }),
+            );
             await writeRequests(store);
           }
           const refreshedStore = await readRequests();
-          const refreshed = refreshedStore.executions.find((candidate) => candidate.request.idempotencyKey === executionRequest.idempotencyKey);
+          const refreshed = refreshedStore.executions.find(
+            (candidate) =>
+              candidate.request.idempotencyKey ===
+              executionRequest.idempotencyKey,
+          );
           const refreshedRelation = await currentDecision(request);
-          if (!refreshed || !refreshedRelation.incident || !refreshedRelation.decision) throw new Error("Action reservation is unavailable.");
-          if (refreshed.status === "SUCCEEDED") return projectFixtureExecution(refreshed);
-          if (refreshedRelation.incident.status !== "ACTION_EXECUTING") throw new Error("Action lifecycle changed before finalization.");
+          if (
+            !refreshed ||
+            !refreshedRelation.incident ||
+            !refreshedRelation.decision
+          )
+            throw new Error("Action reservation is unavailable.");
+          if (refreshed.status === "SUCCEEDED")
+            return projectFixtureExecution(refreshed);
+          if (refreshedRelation.incident.status !== "ACTION_EXECUTING")
+            throw new Error("Action lifecycle changed before finalization.");
           const booking = refreshedRelation.decision.booking;
-          if (booking.bookingVersion !== receipt.previousBookingVersion) throw new Error("Action authority changed before finalization.");
-          const task = { taskId: request.snapshot.taskId, displayName: request.snapshot.taskDisplayName };
-          if (!booking.includedTasks.some((candidate) => candidate.taskId === task.taskId)) booking.includedTasks.push(task);
-          booking.scheduledDurationMinutes += request.snapshot.durationDeltaMinutes;
+          if (booking.bookingVersion !== receipt.previousBookingVersion)
+            throw new Error("Action authority changed before finalization.");
+          const task = {
+            taskId: request.snapshot.taskId,
+            displayName: request.snapshot.taskDisplayName,
+          };
+          if (
+            !booking.includedTasks.some(
+              (candidate) => candidate.taskId === task.taskId,
+            )
+          )
+            booking.includedTasks.push(task);
+          booking.scheduledDurationMinutes +=
+            request.snapshot.durationDeltaMinutes;
           booking.bookingVersion = receipt.resultingBookingVersion;
-          const executed = transitionIncident(refreshedRelation.incident.status, { type: "ACTION_SUCCEEDS" }, {});
-          refreshedRelation.incident.status = transitionIncident(executed.nextStatus, { type: "MARK_COMPLETION_PENDING" }, {}).nextStatus;
-          Object.assign(refreshed, { status: "SUCCEEDED", receipt, error: null });
-          await Promise.all([writeRequests(refreshedStore), writeIncidents(refreshedRelation.store)]);
+          const executed = transitionIncident(
+            refreshedRelation.incident.status,
+            { type: "ACTION_SUCCEEDS" },
+            {},
+          );
+          refreshedRelation.incident.status = transitionIncident(
+            executed.nextStatus,
+            { type: "MARK_COMPLETION_PENDING" },
+            {},
+          ).nextStatus;
+          Object.assign(refreshed, {
+            status: "SUCCEEDED",
+            receipt,
+            error: null,
+          });
+          await Promise.all([
+            writeRequests(refreshedStore),
+            writeIncidents(refreshedRelation.store),
+          ]);
           return projectFixtureExecution(refreshed);
         } catch (error) {
           const refreshedStore = await readRequests();
-          const refreshed = refreshedStore.executions.find((candidate) => candidate.request.idempotencyKey === executionRequest.idempotencyKey);
-          if (!refreshed) throw error;
-          const connectorError = error instanceof BookingActionConnectorError ? error : null;
-          const hasDurableReceipt = refreshedStore.connectorReceipts.some(
-            (candidate) => candidate.idempotencyKey === executionRequest.idempotencyKey,
+          const refreshed = refreshedStore.executions.find(
+            (candidate) =>
+              candidate.request.idempotencyKey ===
+              executionRequest.idempotencyKey,
           );
-          refreshed.status = connectorError?.retryable || hasDurableReceipt ? "RETRYABLE_FAILED" : "PERMANENT_FAILED";
-          refreshed.error = { code: connectorError?.code ?? "INVALID_CONNECTOR_RESULT", message: connectorError?.message ?? "The connector returned an invalid result." };
+          if (!refreshed) throw error;
+          const connectorError =
+            error instanceof BookingActionConnectorError ? error : null;
+          const hasDurableReceipt = refreshedStore.connectorReceipts.some(
+            (candidate) =>
+              candidate.idempotencyKey === executionRequest.idempotencyKey,
+          );
+          refreshed.status =
+            connectorError?.retryable || hasDurableReceipt
+              ? "RETRYABLE_FAILED"
+              : "PERMANENT_FAILED";
+          refreshed.error = {
+            code: connectorError?.code ?? "INVALID_CONNECTOR_RESULT",
+            message:
+              connectorError?.message ??
+              "The connector returned an invalid result.",
+          };
           const failedRelation = await currentDecision(request);
           if (failedRelation.incident) {
-            if (failedRelation.incident.status !== "ACTION_EXECUTING") throw new Error("Action lifecycle changed before failure was recorded.");
+            if (failedRelation.incident.status !== "ACTION_EXECUTING")
+              throw new Error(
+                "Action lifecycle changed before failure was recorded.",
+              );
             failedRelation.incident.status = transitionIncident(
               failedRelation.incident.status,
-              { type: connectorError?.retryable || hasDurableReceipt ? "ACTION_FAILS" : "ACTION_ABORTS" },
+              {
+                type:
+                  connectorError?.retryable || hasDurableReceipt
+                    ? "ACTION_FAILS"
+                    : "ACTION_ABORTS",
+              },
               {},
             ).nextStatus;
-            await Promise.all([writeRequests(refreshedStore), writeIncidents(failedRelation.store)]);
+            await Promise.all([
+              writeRequests(refreshedStore),
+              writeIncidents(failedRelation.store),
+            ]);
           } else {
             await writeRequests(refreshedStore);
           }
@@ -739,7 +1002,11 @@ function fixtureGateway(storePath: string): CustomerConfirmationGateway {
         }
       })();
       fixtureExecutionLocks.set(tokenHash, run);
-      try { return await run; } finally { fixtureExecutionLocks.delete(tokenHash); }
+      try {
+        return await run;
+      } finally {
+        fixtureExecutionLocks.delete(tokenHash);
+      }
     },
   };
 }

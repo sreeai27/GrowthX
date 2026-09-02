@@ -32,6 +32,7 @@ type WorkerArgs = {
 
 type CreateArgs = WorkerArgs & {
   tokenHash: string;
+  completionTokenHash: string;
   expiresAt: string;
 };
 
@@ -99,6 +100,15 @@ async function findByHash(context: MutationContext, tokenHash: string) {
     .query("confirmationRequests")
     .withIndex("by_tenant_token_hash", (range) =>
       range.eq("tenantId", DEMO_TENANT_ID).eq("tokenHash", tokenHash),
+    )
+    .unique();
+}
+
+async function findByCompletionHash(context: MutationContext, tokenHash: string) {
+  return context.db
+    .query("confirmationRequests")
+    .withIndex("by_tenant_completion_token_hash", (range) =>
+      range.eq("tenantId", DEMO_TENANT_ID).eq("completionTokenHash", tokenHash),
     )
     .unique();
 }
@@ -223,7 +233,7 @@ export async function createConfirmationHandler(
       expiresAt: existing.expiresAt,
     };
   }
-  if (await findByHash(context, args.tokenHash)) {
+  if (await findByHash(context, args.tokenHash) || await findByCompletionHash(context, args.completionTokenHash)) {
     throw new ConvexError("Confirmation token collision.");
   }
   let canonicalExpiresAt: string;
@@ -299,6 +309,7 @@ export async function createConfirmationHandler(
     incidentId: access.incident._id,
     decisionId: decision._id,
     tokenHash: args.tokenHash,
+    completionTokenHash: args.completionTokenHash,
     expiresAt: canonicalExpiresAt,
     status: "PENDING",
     requestSnapshot,

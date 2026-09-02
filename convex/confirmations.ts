@@ -19,6 +19,7 @@ export const create = mutation({
   args: {
     ...workerArgs,
     tokenHash: v.string(),
+    completionTokenHash: v.string(),
     expiresAt: v.string(),
   },
   handler: createConfirmationHandler,

@@ -99,6 +99,30 @@ describe("transitionIncident", () => {
       auditEvent: "completion_pending",
     },
     {
+      current: "COMPLETION_PENDING",
+      event: { type: "SUBMIT_COMPLETION" },
+      nextStatus: "AWAITING_COMPLETION_RESPONSE",
+      auditEvent: "completion_submitted",
+    },
+    {
+      current: "AWAITING_COMPLETION_RESPONSE",
+      event: { type: "CUSTOMER_ACKNOWLEDGES" },
+      nextStatus: "VERIFIED",
+      auditEvent: "customer_acknowledged",
+    },
+    {
+      current: "AWAITING_COMPLETION_RESPONSE",
+      event: { type: "CUSTOMER_RAISES_ISSUE" },
+      nextStatus: "DISPUTED",
+      auditEvent: "customer_raised_issue",
+    },
+    {
+      current: "AWAITING_COMPLETION_RESPONSE",
+      event: { type: "REQUIRE_COMPLETION_REVIEW" },
+      nextStatus: "AWAITING_HUMAN_REVIEW",
+      auditEvent: "completion_review_required",
+    },
+    {
       current: "ACTION_EXECUTING",
       event: { type: "ACTION_FAILS" },
       nextStatus: "ACTION_AUTHORISED",
@@ -174,6 +198,10 @@ describe("transitionIncident", () => {
     ["ACTION_EXECUTING", "START_ACTION"],
     ["ACTION_EXECUTED", "ACTION_FAILS"],
     ["COMPLETION_PENDING", "CUSTOMER_REPORTS_MISMATCH"],
+    ["COMPLETION_PENDING", "CUSTOMER_ACKNOWLEDGES"],
+    ["AWAITING_COMPLETION_RESPONSE", "SUBMIT_COMPLETION"],
+    ["VERIFIED", "CUSTOMER_RAISES_ISSUE"],
+    ["DISPUTED", "CUSTOMER_ACKNOWLEDGES"],
   ] as const)("rejects %s -> %s", (current, type) => {
     expect(() =>
       transitionIncident(current, { type }, {}),

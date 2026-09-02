@@ -46,7 +46,9 @@ export default defineSchema({
     synonymsHi: v.array(v.string()),
     synonymsMr: v.array(v.string()),
     active: v.boolean(),
-  }).index("by_tenant_task", ["tenantId", "taskId"]),
+  })
+    .index("by_tenant_task", ["tenantId", "taskId"])
+    .index("by_tenant_catalog", ["tenantId", "catalogVersion"]),
   policySources: defineTable({
     tenantId: v.string(),
     sourceKey: v.string(),
@@ -148,6 +150,9 @@ export default defineSchema({
       v.literal("ACTION_EXECUTING"),
       v.literal("ACTION_EXECUTED"),
       v.literal("COMPLETION_PENDING"),
+      v.literal("AWAITING_COMPLETION_RESPONSE"),
+      v.literal("VERIFIED"),
+      v.literal("DISPUTED"),
       v.literal("AWAITING_HUMAN_REVIEW"),
     ),
     riskTier: v.number(),
@@ -243,10 +248,19 @@ export default defineSchema({
   humanReviews: defineTable({
     tenantId: v.string(),
     incidentId: v.id("incidents"),
-    reviewType: v.union(v.literal("TASK_MAPPING"), v.literal("POLICY_SUPPORT")),
+    reviewType: v.union(
+      v.literal("TASK_MAPPING"),
+      v.literal("POLICY_SUPPORT"),
+      v.literal("COMPLETION_BLOCKER"),
+      v.literal("COMPLETION_DISPUTE"),
+    ),
     status: v.literal("OPEN"),
     reasonCode: v.string(),
-    contextSnapshot: v.object({ confirmedText: v.string() }),
+    contextSnapshot: v.object({
+      confirmedText: v.string(),
+      bookingVersion: v.optional(v.number()),
+      taskIds: v.optional(v.array(v.string())),
+    }),
     createdAt: v.string(),
   }).index("by_tenant_incident", ["tenantId", "incidentId"]),
   policyDecisions: defineTable({
@@ -301,6 +315,7 @@ export default defineSchema({
     incidentId: v.id("incidents"),
     decisionId: v.id("policyDecisions"),
     tokenHash: v.string(),
+    completionTokenHash: v.optional(v.string()),
     expiresAt: v.string(),
     status: v.union(
       v.literal("PENDING"),
@@ -344,6 +359,8 @@ export default defineSchema({
     updatedAt: v.string(),
   })
     .index("by_tenant_token_hash", ["tenantId", "tokenHash"])
+    .index("by_tenant_completion_token_hash", ["tenantId", "completionTokenHash"])
+    .index("by_completion_token_hash", ["completionTokenHash"])
     .index("by_tenant_incident", ["tenantId", "incidentId"])
     .index("by_tenant_decision", ["tenantId", "decisionId"])
     .index("by_expiry_status", ["expiresAt", "status"]),
@@ -412,4 +429,39 @@ export default defineSchema({
     }),
     createdAt: v.string(),
   }).index("by_tenant_idempotency", ["tenantId", "idempotencyKey"]),
+  completionSummaries: defineTable({
+    tenantId: v.string(),
+    incidentId: v.id("incidents"),
+    bookingVersion: v.number(),
+    agreedTasks: v.array(v.object({ taskId: v.string(), displayName: v.string() })),
+    workerTaskStates: v.array(v.object({ taskId: v.string(), state: v.union(v.literal("COMPLETE"), v.literal("BLOCKED")) })),
+    workerNote: v.optional(v.string()),
+    submittedBy: v.string(),
+    submittedAt: v.string(),
+    customerResponse: v.optional(v.union(v.literal("ACKNOWLEDGE"), v.literal("RAISE_ISSUE"))),
+    customerNote: v.optional(v.string()),
+    respondedAt: v.optional(v.string()),
+    verificationState: v.union(v.literal("CANNOT_VERIFY"), v.literal("VERIFIED"), v.literal("DISPUTED"), v.literal("REVIEW_REQUIRED")),
+    reviewerRequired: v.boolean(),
+    updatedAt: v.string(),
+  }).index("by_tenant_incident", ["tenantId", "incidentId"]),
+  verificationEvents: defineTable({
+    tenantId: v.string(),
+    incidentId: v.id("incidents"),
+    completionSummaryId: v.id("completionSummaries"),
+    criteriaVersion: v.literal("taskconfirm-verification-v1"),
+    actor: v.union(v.literal("WORKER"), v.literal("CUSTOMER"), v.literal("SYSTEM")),
+    bookingVersion: v.number(),
+    evidence: v.object({
+      agreedTaskIds: v.array(v.string()),
+      workerTaskStates: v.array(v.object({ taskId: v.string(), state: v.union(v.literal("COMPLETE"), v.literal("BLOCKED")) })),
+      receiptRequired: v.boolean(),
+      receiptMatches: v.boolean(),
+      customerResponse: v.optional(v.union(v.literal("ACKNOWLEDGE"), v.literal("RAISE_ISSUE"))),
+    }),
+    actionExecutionId: v.optional(v.id("actionExecutions")),
+    state: v.union(v.literal("CANNOT_VERIFY"), v.literal("VERIFIED"), v.literal("DISPUTED"), v.literal("REVIEW_REQUIRED")),
+    reviewerRequired: v.boolean(),
+    createdAt: v.string(),
+  }).index("by_tenant_incident", ["tenantId", "incidentId"]),
 });

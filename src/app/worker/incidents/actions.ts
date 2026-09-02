@@ -1,15 +1,21 @@
 "use server";
 
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { readBrowserCredential } from "../../demo/session";
-import { hashDemoToken } from "../../../domain/demo-session";
+import { hashCompletionToken, hashDemoToken } from "../../../domain/demo-session";
 import { getIncidentGateway } from "../../../services/providers/incident-gateway";
 import { getCustomerConfirmationGateway } from "../../../services/providers/customer-confirmation";
+import { CompletionSubmissionConflictError, getCompletionVerificationGateway } from "../../../services/providers/completion-verification";
 import { env } from "../../../config/env";
 
 async function requireAccess() {
@@ -163,7 +169,9 @@ async function readConfirmationToken(
   incidentKey: string,
   publicRunId: string,
 ): Promise<string | null> {
-  const value = (await cookies()).get(confirmationCookieName(incidentKey))?.value;
+  const value = (await cookies()).get(
+    confirmationCookieName(incidentKey),
+  )?.value;
   if (!value) return null;
   const parts = value.split(".");
   if (parts.length !== 4) return null;
@@ -179,8 +187,12 @@ async function readConfirmationToken(
   }
   const payload = `${storedIncidentKey}.${storedRunId}.${rawToken}`;
   const supplied = Buffer.from(signature, "base64url");
-  const expected = Buffer.from(confirmationCookieSignature(payload), "base64url");
-  return supplied.length === expected.length && timingSafeEqual(supplied, expected)
+  const expected = Buffer.from(
+    confirmationCookieSignature(payload),
+    "base64url",
+  );
+  return supplied.length === expected.length &&
+    timingSafeEqual(supplied, expected)
     ? rawToken
     : null;
 }
@@ -191,8 +203,14 @@ export async function createCustomerConfirmationAction(formData: FormData) {
     .parse(Object.fromEntries(formData));
   const access = await requireAccess();
   const gateway = getCustomerConfirmationGateway();
-  const existing = await gateway.getWorkerConfirmation({ ...access, incidentKey });
-  const existingToken = await readConfirmationToken(incidentKey, access.publicRunId);
+  const existing = await gateway.getWorkerConfirmation({
+    ...access,
+    incidentKey,
+  });
+  const existingToken = await readConfirmationToken(
+    incidentKey,
+    access.publicRunId,
+  );
   if (existing && existingToken) {
     redirect(`/worker/incidents/${incidentKey}/status`);
   }
@@ -202,6 +220,7 @@ export async function createCustomerConfirmationAction(formData: FormData) {
     ...access,
     incidentKey,
     tokenHash: hashDemoToken(rawToken),
+    completionTokenHash: hashCompletionToken(rawToken),
     expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
   });
   if (result.created) {
@@ -214,12 +233,16 @@ export async function getCustomerConfirmationForWorker(incidentKey: string) {
   const parsedKey = incidentKeySchema.safeParse(incidentKey);
   if (!parsedKey.success) return null;
   const access = await requireAccess();
-  const confirmation = await getCustomerConfirmationGateway().getWorkerConfirmation({
-    ...access,
-    incidentKey: parsedKey.data,
-  });
+  const confirmation =
+    await getCustomerConfirmationGateway().getWorkerConfirmation({
+      ...access,
+      incidentKey: parsedKey.data,
+    });
   if (!confirmation) return null;
-  const rawToken = await readConfirmationToken(parsedKey.data, access.publicRunId);
+  const rawToken = await readConfirmationToken(
+    parsedKey.data,
+    access.publicRunId,
+  );
   return {
     confirmation,
     rawToken,
@@ -259,4 +282,37 @@ export async function getPolicyDecisionForWorker(incidentKey: string) {
     ...access,
     incidentKey: parsedKey.data,
   });
+}
+
+export async function getCompletionForWorker(incidentKey: string) {
+  const parsedKey = incidentKeySchema.safeParse(incidentKey);
+  if (!parsedKey.success) return null;
+  const access = await requireAccess();
+  return getCompletionVerificationGateway().getForWorker({
+    ...access,
+    incidentKey: parsedKey.data,
+  });
+}
+
+export async function submitCompletionAction(formData: FormData) {
+  const incidentKey = incidentKeySchema.parse(formData.get("incidentKey"));
+  const access = await requireAccess();
+  const parsed = z.object({
+    bookingVersion: z.coerce.number().int().positive(),
+    note: z.string().trim().max(500),
+  }).safeParse({ bookingVersion: formData.get("bookingVersion"), note: formData.get("note") ?? "" });
+  const taskIds = z.array(z.string().min(1)).min(1).safeParse(formData.getAll("taskId"));
+  if (!parsed.success || !taskIds.success) redirect(`/worker/incidents/${incidentKey}/completion?error=agreement-changed`);
+  const taskStates = taskIds.data.map((taskId) => ({ taskId, state: z.enum(["COMPLETE", "BLOCKED"]).safeParse(formData.get(`state.${taskId}`)) }));
+  if (taskStates.some(({ state }) => !state.success)) redirect(`/worker/incidents/${incidentKey}/completion?error=agreement-changed`);
+  try {
+    await getCompletionVerificationGateway().submitWorkerSummary(
+      { ...access, incidentKey },
+      { bookingVersion: parsed.data.bookingVersion, taskStates: taskStates.map(({ taskId, state }) => ({ taskId, state: state.data! })), ...(parsed.data.note ? { note: parsed.data.note } : {}) },
+    );
+  } catch (error) {
+    if (error instanceof CompletionSubmissionConflictError) redirect(`/worker/incidents/${incidentKey}/completion?error=agreement-changed`);
+    throw error;
+  }
+  redirect(`/worker/incidents/${incidentKey}/completion`);
 }
