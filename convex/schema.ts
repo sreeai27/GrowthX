@@ -126,9 +126,24 @@ export default defineSchema({
     lastActiveAt: v.string(),
     resumeExpiresAt: v.string(),
     abandonedAt: v.optional(v.string()),
+    firstCheckpointDismissedAt: v.optional(v.string()),
+    secondCheckpointDismissedAt: v.optional(v.string()),
   })
     .index("by_tenant_public_run", ["tenantId", "publicRunId"])
     .index("by_resume_expiry", ["resumeExpiresAt"]),
+  demoContacts: defineTable({
+    tenantId: v.string(), demoRunId: v.id("demoRuns"), type: v.union(v.literal("EMAIL"), v.literal("INDIAN_MOBILE")),
+    contactCiphertext: v.string(), contactIv: v.string(), contactAuthTag: v.string(), contactLookupHash: v.string(), maskedDisplay: v.string(), verificationState: v.literal("UNVERIFIED"),
+    deliveryPurposeExpiresAt: v.string(), invitationConsent: v.boolean(), consentVersion: v.optional(v.string()), consentedAt: v.optional(v.string()), invitationExpiresAt: v.optional(v.string()), invitationSentAt: v.optional(v.string()), createdAt: v.string(), updatedAt: v.string(),
+  }).index("by_tenant_run", ["tenantId", "demoRunId"]).index("by_tenant_contact_hash", ["tenantId", "contactLookupHash"]),
+  demoResultLinks: defineTable({
+    tenantId: v.string(), demoRunId: v.id("demoRuns"), contactId: v.id("demoContacts"), tokenHash: v.string(),
+    resultSnapshot: v.object({ requestSummary: v.string(), policyOutcome: v.object({ decisionState: v.string(), supportState: v.string(), sourceKey: v.optional(v.string()), sourceVersion: v.optional(v.string()) }), customerDecision: v.string(), finalReceipt: v.union(v.null(), v.object({ connector: v.string(), externalActionId: v.string(), status: v.string(), executedAt: v.string() })), verificationState: v.string() }),
+    expiresAt: v.string(), deleteAfter: v.string(), status: v.union(v.literal("ACTIVE"), v.literal("REVOKED")), createdAt: v.string(), updatedAt: v.string(),
+  }).index("by_token_hash", ["tokenHash"]).index("by_tenant_run", ["tenantId", "demoRunId"]),
+  demoDeliveries: defineTable({
+    tenantId: v.string(), demoRunId: v.id("demoRuns"), contactId: v.id("demoContacts"), resultLinkId: v.id("demoResultLinks"), channel: v.union(v.literal("EMAIL"), v.literal("SMS")), status: v.union(v.literal("PENDING"), v.literal("DELIVERED"), v.literal("FAILED")), provider: v.optional(v.string()), providerMessageId: v.optional(v.string()), acceptedAt: v.optional(v.string()), errorCode: v.optional(v.string()), errorMessage: v.optional(v.string()), browserRateKey: v.string(), contactRateKey: v.string(), attemptedAt: v.string(), updatedAt: v.string(),
+  }).index("by_tenant_browser_attempt", ["tenantId", "browserRateKey", "attemptedAt"]).index("by_tenant_contact_attempt", ["tenantId", "contactRateKey", "attemptedAt"]).index("by_tenant_run", ["tenantId", "demoRunId"]),
   incidents: defineTable({
     incidentKey: v.string(),
     tenantId: v.string(),

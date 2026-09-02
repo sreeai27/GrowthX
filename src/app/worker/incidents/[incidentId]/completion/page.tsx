@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 
 import { getCompletionForWorker, submitCompletionAction } from "../../actions";
+import { PrivateResultCheckpoint } from "../private-result-checkpoint";
+import { getPrivateResultCheckpoint } from "../private-result-actions";
 
 const stateCopy = {
   VERIFIED: [
@@ -41,6 +43,10 @@ export default async function WorkerCompletionPage({
   if (view.kind === "INVALID")
     redirect(`/worker/incidents/${incidentId}/status`);
   const recorded = view.kind === "SUBMITTED" || view.kind === "RECORDED";
+  const terminal = recorded && view.kind === "RECORDED";
+  const checkpoint = terminal
+    ? await getPrivateResultCheckpoint(incidentId, "COMPLETION")
+    : null;
   const copy = recorded ? stateCopy[view.verification.state] : null;
   return (
     <main className="incident-shell completion-shell">
@@ -155,6 +161,13 @@ export default async function WorkerCompletionPage({
             Connector receipt evidence:{" "}
             {view.agreement.receipt.externalActionId}
           </p>
+        ) : null}
+        {checkpoint ? (
+          <PrivateResultCheckpoint
+            checkpoint={checkpoint}
+            incidentKey={incidentId}
+            stage="COMPLETION"
+          />
         ) : null}
       </article>
     </main>

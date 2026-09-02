@@ -5,6 +5,8 @@ import {
   createCustomerConfirmationAction,
   getPolicyDecisionForWorker,
 } from "../../actions";
+import { PrivateResultCheckpoint } from "../private-result-checkpoint";
+import { getPrivateResultCheckpoint } from "../private-result-actions";
 
 const outcomeCopy = {
   INCLUDED_CONTINUE: {
@@ -67,9 +69,11 @@ function money(minor: number, currency: string) {
 function DecisionPageContent({
   decision,
   incidentId,
+  checkpoint,
 }: {
   decision: WorkerPolicyDecisionView;
   incidentId: string;
+  checkpoint: Awaited<ReturnType<typeof getPrivateResultCheckpoint>>;
 }) {
   const state = decision.outcome.decisionState;
   const copy = state
@@ -192,6 +196,14 @@ function DecisionPageContent({
           </li>
         </ol>
 
+        {checkpoint ? (
+          <PrivateResultCheckpoint
+            checkpoint={checkpoint}
+            incidentKey={incidentId}
+            stage="DECISION"
+          />
+        ) : null}
+
         <section className="decision-actions" aria-labelledby="next-step-heading">
           <p className="eyebrow">Safe next step · सुरक्षित अगला कदम</p>
           <h2 id="next-step-heading">Choose only from allowed actions</h2>
@@ -235,5 +247,12 @@ export default async function DecisionPage({
   const { incidentId } = await params;
   const decision = await getPolicyDecisionForWorker(incidentId);
   if (!decision) redirect(`/worker/incidents/${incidentId}/interpretation`);
-  return <DecisionPageContent decision={decision} incidentId={incidentId} />;
+  const checkpoint = await getPrivateResultCheckpoint(incidentId, "DECISION");
+  return (
+    <DecisionPageContent
+      checkpoint={checkpoint}
+      decision={decision}
+      incidentId={incidentId}
+    />
+  );
 }

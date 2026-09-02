@@ -729,6 +729,141 @@ test("complete and verify rejects a stale submission and reloads the current agr
   await worker.close();
 });
 
+test("private demo result can be skipped first and captured after verified completion", async ({
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  const worker = await browser.newContext();
+  const workerPage = await worker.newPage();
+  await workerPage.setViewportSize({ width: 360, height: 800 });
+  await workerPage.goto("/demo");
+  await workerPage.getByRole("button", { name: /Start as worker/i }).click();
+  await workerPage
+    .getByRole("button", { name: /Report a customer-requested change/i })
+    .click();
+  await workerPage
+    .getByRole("textbox", { name: /Customer request/i })
+    .fill("Balcony ko deep clean karna hai");
+  await workerPage.getByRole("button", { name: /Review request/i }).click();
+  await workerPage.getByRole("button", { name: /Yes, continue/i }).click();
+  await workerPage.getByRole("button", { name: /Select this/i }).click();
+  await expect(workerPage).toHaveURL(/\/decision$/, { timeout: 20_000 });
+
+  await expect(
+    workerPage.getByRole("heading", { name: /Keep your result/i }),
+  ).toBeVisible({ timeout: 20_000 });
+  const firstSkip = workerPage.getByRole("button", { name: /Not now/i });
+  await firstSkip.focus();
+  await expect(firstSkip).toBeFocused();
+  expect(
+    await firstSkip.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    ),
+  ).toBeGreaterThanOrEqual(48);
+  await firstSkip.click();
+  const sendForApproval = workerPage.getByRole("button", {
+    name: /Send for customer approval/i,
+  });
+  await expect(sendForApproval).toBeEnabled();
+  await sendForApproval.click();
+  await expect(workerPage).toHaveURL(/\/status$/, { timeout: 20_000 });
+  const customerUrl = await workerPage
+    .getByRole("link", { name: /Open customer link/i })
+    .getAttribute("href");
+  if (!customerUrl) throw new Error("Expected a customer confirmation link.");
+
+  const customer = await browser.newContext();
+  const customerPage = await customer.newPage();
+  await customerPage.goto(customerUrl);
+  await customerPage
+    .getByRole("button", { name: /Yes, this is my request/i })
+    .click();
+  await customerPage.getByRole("button", { name: /Approve ₹299/i }).click();
+  await expect(
+    customerPage.getByRole("heading", { name: /Booking updated/i }),
+  ).toBeVisible();
+  await workerPage.reload();
+  await workerPage
+    .getByRole("link", { name: /Record completed work/i })
+    .click();
+  const tasks = workerPage.locator(".completion-task");
+  for (let index = 0; index < (await tasks.count()); index += 1) {
+    await tasks.nth(index).getByLabel(/Complete/i).check();
+  }
+  await workerPage
+    .getByRole("button", { name: /Submit completion/i })
+    .click();
+  await customerPage.reload();
+  await customerPage.getByRole("button", { name: /Acknowledge/i }).click();
+  await expect(
+    customerPage.getByRole("heading", { name: "Verified" }),
+  ).toBeVisible();
+  await workerPage.reload();
+  await expect(
+    workerPage.getByRole("heading", { name: "Verified" }),
+  ).toBeVisible();
+  await expect(
+    workerPage.getByRole("heading", { name: /Send me this result/i }),
+  ).toBeVisible();
+
+  const invitation = workerPage.getByRole("checkbox", {
+    name: /one account invitation/i,
+  });
+  await expect(invitation).not.toBeChecked();
+  await workerPage
+    .getByRole("textbox", { name: /Email or Indian mobile/i })
+    .fill("Visitor@Example.COM");
+  const sendResult = workerPage.getByRole("button", {
+    name: /Send my result/i,
+  });
+  await sendResult.focus();
+  await expect(sendResult).toBeFocused();
+  expect(
+    await sendResult.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    ),
+  ).toBeGreaterThanOrEqual(48);
+  expect(
+    await workerPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await sendResult.click();
+
+  await expect(
+    workerPage.getByRole("heading", {
+      name: /Your result is on its way|We could not send it yet/i,
+    }),
+  ).toBeVisible();
+  await expect(
+    workerPage.getByRole("heading", { name: "Verified" }),
+  ).toBeVisible();
+  await expect(workerPage.getByText(/v\*\*\*@example\.com/i)).toBeVisible();
+  await expect(workerPage.getByText(/Unverified|not an account/i)).toBeVisible();
+  await customer.close();
+  await worker.close();
+});
+
+test("private demo result public page is read only and does not expose private fields", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/result/not-a-real-result-token");
+  await expect(
+    page.getByRole("heading", { name: /result link is not valid/i }),
+  ).toBeVisible();
+  await expect(page.getByRole("button")).toHaveCount(0);
+  const html = await page.locator("body").innerText();
+  expect(html).not.toMatch(
+    /Balcony ko deep clean|Hunar Trace|tenant(?:Id| ID)|browser token|contact ciphertext|visitor@example\.com/i,
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test("customer confirmation renders invalid, mismatch and decline as distinct terminal outcomes", async ({
   browser,
 }) => {

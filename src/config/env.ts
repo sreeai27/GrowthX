@@ -19,6 +19,10 @@ const environmentSchema = z.object({
   FEATURE_OPENAI_MAPPING: z.enum(["true", "false"]).default("false"),
   FEATURE_FIXTURE_MODE: z.enum(["true", "false"]).default("false"),
   DEMO_FIXTURE_STORE_PATH: optionalSecret,
+  DEMO_CONTACT_ENCRYPTION_KEY: optionalSecret,
+  PRIVATE_RESULT_DELIVERY_PROVIDER: z
+    .enum(["DEMONSTRATION"])
+    .optional(),
 });
 
 export function parseEnvironment(input: Record<string, string | undefined>) {
@@ -33,6 +37,12 @@ export function parseEnvironment(input: Record<string, string | undefined>) {
       ...(parsed.SARVAM_API_KEY ? { sarvamApiKey: parsed.SARVAM_API_KEY } : {}),
       ...(parsed.DEMO_SESSION_COOKIE_SECRET
         ? { demoSessionCookieSecret: parsed.DEMO_SESSION_COOKIE_SECRET }
+        : {}),
+      ...(parsed.DEMO_CONTACT_ENCRYPTION_KEY
+        ? { demoContactEncryptionKey: parsed.DEMO_CONTACT_ENCRYPTION_KEY }
+        : {}),
+      ...(parsed.PRIVATE_RESULT_DELIVERY_PROVIDER
+        ? { privateResultDeliveryProvider: parsed.PRIVATE_RESULT_DELIVERY_PROVIDER }
         : {}),
     },
     features: {
