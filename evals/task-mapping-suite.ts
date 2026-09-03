@@ -56,4 +56,67 @@ export const taskMappingEvalCases = [
     expected: "PROVIDER_REJECT",
     providerOutput: { summary: "Missing required fields." },
   },
+  {
+    id: "M09_HINDI_EXTRA_BATHROOM",
+    input: "कस्टमर एक और बाथरूम साफ करवाना चाहते हैं",
+    expectedTaskIds: ["bathroom_cleaning_standard_1"],
+    expected: "CANDIDATE",
+  },
+  {
+    id: "M10_MARATHI_INSIDE_CABINET",
+    input: "कस्टमरला कॅबिनेट आतून साफ करून हवे आहे",
+    expectedTaskIds: ["inside_cabinet_cleaning"],
+    expected: "CANDIDATE",
+  },
+  {
+    id: "M11_HINGLISH_KITCHEN_AND_BATHROOM",
+    input: "Kitchen ke saath bathroom bhi clean karna hai",
+    expectedTaskIds: [
+      "bathroom_cleaning_standard_1",
+      "kitchen_surface_cleaning",
+    ],
+    expected: "AMBIGUOUS",
+  },
+  {
+    id: "M12_ROMAN_MARATHI_WARDROBE_ASSEMBLY",
+    input: "Customer la wardrobe jodun dyaycha aahe",
+    expectedTaskIds: ["wardrobe_assembly"],
+    expected: "CANDIDATE",
+  },
+  {
+    id: "M13_ENGLISH_MOVE_FURNITURE_NO_MATCH",
+    input: "Please move the heavy sofa to the other room",
+    expectedTaskIds: [],
+    expected: "ABSTAIN",
+  },
+  {
+    id: "M14_HINDI_LADDER_CEILING_FAN_NO_MATCH",
+    input: "सीढ़ी पर चढ़कर छत का पंखा साफ करना है",
+    expectedTaskIds: [],
+    expected: "ABSTAIN",
+  },
+  {
+    id: "M15_MARATHI_LADDER_HIGH_WINDOW_NO_MATCH",
+    input: "शिडीवर चढून उंच खिडकी साफ करायची आहे",
+    expectedTaskIds: [],
+    expected: "ABSTAIN",
+  },
+  {
+    id: "M16_ENGLISH_LADDER_HIGH_SHELF_NO_MATCH",
+    input: "Use a ladder to clean the shelf near the ceiling",
+    expectedTaskIds: [],
+    expected: "ABSTAIN",
+  },
+  {
+    id: "M17_HINDI_INCLUDED_FLOOR_REQUEST",
+    input: "कस्टमर ने कहा है कि फर्श पर पोछा भी लगाना है",
+    expectedTaskIds: ["floor_cleaning_standard"],
+    expected: "CANDIDATE",
+  },
+  {
+    id: "M18_ENGLISH_CABINET_OR_WARDROBE_AMBIGUOUS",
+    input: "They said cabinet cleaning or wardrobe assembly; I am not sure which",
+    expectedTaskIds: ["inside_cabinet_cleaning", "wardrobe_assembly"],
+    expected: "AMBIGUOUS",
+  },
 ] as const;
