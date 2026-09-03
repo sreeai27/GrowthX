@@ -31,7 +31,14 @@ export default async function TranscriptPage({
         <p className="hindi-copy" lang="hi">
           क्या आपने यही कहा?
         </p>
-        <p className="quality-state">Input quality: usable · इनपुट साफ़ है</p>
+        <p className="quality-state">
+          Input quality: {incident.inputQualityState === "RETRY_RECOMMENDED" ? "please review carefully" : "usable"} · इनपुट जाँचें
+        </p>
+        {incident.detectedLanguages.length ? (
+          <p className="transcript-language">
+            Detected language: {incident.detectedLanguages.join(", ")} · Provider: {incident.transcriptProvider} / {incident.transcriptModel}
+          </p>
+        ) : null}
         <p className="incident-assurance">
           Confirmation is required before task matching. · काम मिलाने से पहले
           पुष्टि ज़रूरी है।
@@ -58,7 +65,7 @@ export default async function TranscriptPage({
         <form action={retryInputAction}>
           <input type="hidden" name="incidentKey" value={incidentId} />
           <button className="secondary-button" type="submit">
-            Try again · फिर से बताएँ
+            Record again · फिर से रिकॉर्ड करें
           </button>
         </form>
       </section>

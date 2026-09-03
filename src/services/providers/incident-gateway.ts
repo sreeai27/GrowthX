@@ -10,6 +10,7 @@ import type { Value } from "convex/values";
 import { z } from "zod";
 
 import { env } from "../../config/env";
+import { rawAudioExpiresAt, speechTranscriptSchema } from "../../domain/incident-audio";
 import {
   transitionIncident,
   type IncidentStatus,
@@ -71,6 +72,10 @@ export const workerIncidentViewSchema = z.object({
   candidates: z.array(candidateSchema),
   selectedTaskId: z.string().nullable(),
   reviewReason: z.string().nullable(),
+  detectedLanguages: z.array(z.string()).default([]),
+  inputQualityState: z.enum(["USABLE", "RETRY_RECOMMENDED"]).nullable().default(null),
+  transcriptProvider: z.string().nullable().default(null),
+  transcriptModel: z.string().nullable().default(null),
 });
 export type WorkerIncidentView = z.infer<typeof workerIncidentViewSchema>;
 const startedSchema = z.object({
@@ -118,6 +123,15 @@ interface Access extends Record<string, Value> {
 interface IncidentAccess extends Access {
   incidentKey: string;
 }
+interface VoiceCaptureAccess {
+  publicRunId: string;
+  browserTokenHash: string;
+  incidentKey: string;
+  audio: Uint8Array;
+  mimeType: "audio/webm" | "audio/mp4" | "audio/mpeg" | "audio/wav" | "audio/ogg";
+  durationMs: number;
+  transcript: z.infer<typeof speechTranscriptSchema>;
+}
 type CaptureInput =
   | { modality: "TEXT"; text: string }
   | { modality: "PRESET"; presetKey: string };
@@ -129,6 +143,7 @@ export interface IncidentGateway {
   capture(
     input: IncidentAccess & { input: CaptureInput },
   ): Promise<{ status: "TRANSCRIPT_READY" }>;
+  captureVoice(input: VoiceCaptureAccess): Promise<{ status: "TRANSCRIPT_READY" }>;
   retryInput(input: IncidentAccess): Promise<{ status: "DRAFT" }>;
   confirmTranscript(
     input: IncidentAccess & { confirmedText: string },
@@ -163,6 +178,8 @@ const captureRef = makeFunctionReference<
   IncidentAccess & { input: CaptureInput },
   { status: "TRANSCRIPT_READY" }
 >("incidents:captureRequest");
+const voiceUploadRef = makeFunctionReference<"mutation", IncidentAccess, string>("incidentAudio:createUploadUrl");
+const voicePersistRef = makeFunctionReference<"mutation", Record<string, Value>, { status: "TRANSCRIPT_READY" }>("incidentAudio:persistTranscript");
 const retryInputRef = makeFunctionReference<
   "mutation",
   IncidentAccess,
@@ -221,6 +238,30 @@ function convexGateway(url: string): IncidentGateway {
     async capture(input) {
       return transcriptReadySchema.parse(await client.mutation(captureRef, input));
     },
+    async captureVoice(input) {
+      const access = {
+        publicRunId: input.publicRunId,
+        browserTokenHash: input.browserTokenHash,
+        incidentKey: input.incidentKey,
+      };
+      const uploadUrl = z.string().url().parse(await client.mutation(voiceUploadRef, access));
+      const audioBuffer = new ArrayBuffer(input.audio.byteLength);
+      new Uint8Array(audioBuffer).set(input.audio);
+      const uploaded = z.object({ storageId: z.string().min(1) }).strict().parse(
+        await (await fetch(uploadUrl, { method: "POST", headers: { "content-type": input.mimeType }, body: new Blob([audioBuffer], { type: input.mimeType }) })).json(),
+      );
+      return transcriptReadySchema.parse(await client.mutation(voicePersistRef, {
+        publicRunId: input.publicRunId,
+        browserTokenHash: input.browserTokenHash,
+        incidentKey: input.incidentKey,
+        storageId: uploaded.storageId,
+        mimeType: input.mimeType,
+        byteLength: input.audio.byteLength,
+        durationMs: input.durationMs,
+        expiresAt: rawAudioExpiresAt(new Date().toISOString()),
+        transcript: speechTranscriptSchema.parse(input.transcript),
+      }));
+    },
     async retryInput(input) {
       return draftSchema.parse(await client.mutation(retryInputRef, input));
     },
@@ -260,6 +301,11 @@ function convexGateway(url: string): IncidentGateway {
 const fixtureIncidentSchema = workerIncidentViewSchema.extend({
   publicRunId: z.string(),
   policyDecision: workerPolicyDecisionViewSchema.nullable().optional(),
+  voiceEvidence: z.object({
+    rawAudioBase64: z.string(),
+    rawAudioExpiresAt: z.string().datetime(),
+    transcript: speechTranscriptSchema,
+  }).optional(),
 });
 const fixtureSchema = z.object({ incidents: z.array(fixtureIncidentSchema) });
 type FixtureStore = z.infer<typeof fixtureSchema>;
@@ -333,6 +379,10 @@ function fixtureGateway(path: string): IncidentGateway {
         candidates: [],
         selectedTaskId: null,
         reviewReason: null,
+        detectedLanguages: [],
+        inputQualityState: null,
+        transcriptProvider: null,
+        transcriptModel: null,
       });
       await write(store);
       return {
@@ -343,7 +393,11 @@ function fixtureGateway(path: string): IncidentGateway {
     },
     async capture(input) {
       const store = await read();
-      const incident = await owned(store, input);
+      const incident = await owned(store, {
+        publicRunId: input.publicRunId,
+        browserTokenHash: input.browserTokenHash,
+        incidentKey: input.incidentKey,
+      });
       if (!incident) throw new Error("Incident is unavailable.");
       const captured = transitionIncident(
         incident.status,
@@ -361,6 +415,31 @@ function fixtureGateway(path: string): IncidentGateway {
           : resolveReviewedPreset(input.input.presetKey);
       if (!text) throw new Error("Unknown reviewed preset.");
       incident.originalText = text;
+      incident.status = ready.nextStatus;
+      await write(store);
+      return { status: "TRANSCRIPT_READY" };
+    },
+    async captureVoice(input) {
+      const store = await read();
+      const incident = await owned(store, {
+        publicRunId: input.publicRunId,
+        browserTokenHash: input.browserTokenHash,
+        incidentKey: input.incidentKey,
+      });
+      if (!incident) throw new Error("Incident is unavailable.");
+      const captured = transitionIncident(incident.status, { type: "CAPTURE_INPUT" }, {});
+      const ready = transitionIncident(captured.nextStatus, { type: "PREPARE_TRANSCRIPT" }, {});
+      const transcript = speechTranscriptSchema.parse(input.transcript);
+      incident.originalText = transcript.transcript;
+      incident.detectedLanguages = [transcript.detectedLanguage];
+      incident.inputQualityState = transcript.quality;
+      incident.transcriptProvider = transcript.provider;
+      incident.transcriptModel = transcript.model;
+      incident.voiceEvidence = {
+        rawAudioBase64: Buffer.from(input.audio).toString("base64"),
+        rawAudioExpiresAt: rawAudioExpiresAt(new Date().toISOString()),
+        transcript,
+      };
       incident.status = ready.nextStatus;
       await write(store);
       return { status: "TRANSCRIPT_READY" };

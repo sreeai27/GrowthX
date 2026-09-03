@@ -337,6 +337,10 @@ export const getWorkerIncident = query({
       candidates: interpretation?.candidateTasks ?? [],
       selectedTaskId: taskConfirmation?.selectedTaskId ?? null,
       reviewReason: review?.reasonCode ?? null,
+      detectedLanguages: transcript?.detectedLanguages ?? [],
+      inputQualityState: transcript?.inputQualityState ?? null,
+      transcriptProvider: transcript?.provider ?? null,
+      transcriptModel: transcript?.providerModel ?? null,
     };
   },
 });

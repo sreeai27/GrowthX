@@ -10,6 +10,7 @@ const server = spawn(
     env: {
       ...process.env,
       FEATURE_FIXTURE_MODE: "true",
+      FEATURE_VOICE_CAPTURE: "true",
       DEMO_FIXTURE_STORE_PATH: ".demo-fixture/e2e-runs.json",
       DEMO_SESSION_COOKIE_SECRET:
         "fixture-only-cookie-secret-at-least-32-bytes",

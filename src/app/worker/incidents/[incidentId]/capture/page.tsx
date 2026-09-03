@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { captureRequestAction, getIncidentForWorker } from "../../actions";
+import { VoiceRecorder } from "./voice-recorder";
+import { env } from "../../../../../config/env";
 
 const presets = [
   {
@@ -22,10 +24,13 @@ const presets = [
 
 export default async function CapturePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ incidentId: string }>;
+  searchParams: Promise<{ voiceError?: string }>;
 }) {
   const { incidentId } = await params;
+  const { voiceError } = await searchParams;
   const incident = await getIncidentForWorker(incidentId);
   if (!incident) redirect("/demo");
   if (incident.status !== "DRAFT")
@@ -46,6 +51,17 @@ export default async function CapturePage({
         <p className="incident-assurance">
           The booking will not change yet. · अभी बुकिंग में कोई बदलाव नहीं होगा।
         </p>
+
+        {voiceError ? (
+          <div className="voice-recovery" role="alert">
+            <strong>{voiceError === "unusable" ? "We could not hear enough usable speech." : voiceError === "timeout" ? "Speech processing took too long." : "We could not process that recording."}</strong>
+            <span>Try recording again, type the request, or use a reviewed example below.</span>
+          </div>
+        ) : null}
+
+        {env.features.voiceCapture ? <VoiceRecorder incidentKey={incidentId} /> : null}
+
+        <h2 className="fallback-heading">Type instead · लिखकर बताएँ</h2>
 
         <form className="incident-form" action={captureRequestAction}>
           <input type="hidden" name="incidentKey" value={incidentId} />

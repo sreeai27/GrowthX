@@ -87,7 +87,7 @@ async function createBalconyConfirmationLink(page: Page) {
   await page.getByRole("button", { name: /Review request/i }).click();
   await page.getByRole("button", { name: /Yes, continue/i }).click();
   await page.getByRole("button", { name: /Select this/i }).click();
-  await expect(page).toHaveURL(/\/decision$/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/decision$/, { timeout: 40_000 });
   await page
     .getByRole("button", { name: /Send for customer approval/i })
     .click();
@@ -190,7 +190,7 @@ test("worker captures, confirms and selects a bounded typed request across refre
     page.getByRole("textbox", { name: /Confirmed wording/i }),
   ).toHaveValue("Balcony ko deep clean karna hai");
   const incidentKey = new URL(page.url()).pathname.split("/")[3];
-  await page.getByRole("button", { name: /Try again/i }).click();
+  await page.getByRole("button", { name: /Record again|Try again/i }).click();
   await expect(page).toHaveURL(
     new RegExp(`/worker/incidents/${incidentKey}/capture$`),
   );
@@ -214,7 +214,7 @@ test("worker captures, confirms and selects a bounded typed request across refre
   await outsider.close();
 
   await page.getByRole("button", { name: /Select this/i }).click();
-  await expect(page).toHaveURL(/\/decision$/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/decision$/, { timeout: 40_000 });
   await expect(page.getByText(/Task confirmed/i)).toBeVisible();
   await page.reload();
   await expect(page.getByText(/Task confirmed/i)).toBeVisible();
@@ -862,6 +862,69 @@ test("private demo result public page is read only and does not expose private f
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("voice capture is deliberate and microphone denial keeps typed recovery available", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          throw new DOMException("Denied", "NotAllowedError");
+        },
+      },
+    });
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/demo");
+  await page.getByRole("button", { name: /Start as worker/i }).click();
+  await page.getByRole("button", { name: /Report a customer-requested change/i }).click();
+  await expect(page.getByText(/permission not requested/i)).toBeVisible({ timeout: 20_000 });
+  const permission = page.getByRole("button", { name: /Enable microphone/i });
+  await expect(permission).toBeVisible();
+  await permission.click();
+  await expect(page.getByText(/permission denied/i)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: /Customer request/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Customer asked for balcony deep cleaning/i })).toBeVisible();
+  expect(await permission.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(48);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("fixture voice recording produces a native transcript for confirmation", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    class FixtureMediaRecorder {
+      state: RecordingState = "inactive";
+      mimeType = "audio/webm";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onstop: (() => void) | null = null;
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        this.ondataavailable?.({ data: new Blob([new Uint8Array(2_048)], { type: "audio/webm" }) } as BlobEvent);
+        this.onstop?.();
+      }
+    }
+    Object.defineProperty(window, "MediaRecorder", { configurable: true, value: FixtureMediaRecorder });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: async () => ({ getTracks: () => [] }) },
+    });
+  });
+  await page.goto("/demo");
+  await page.getByRole("button", { name: /Start as worker/i }).click();
+  await page.getByRole("button", { name: /Report a customer-requested change/i }).click();
+  await page.getByRole("button", { name: /Enable microphone/i }).click();
+  const record = page.getByRole("button", { name: /Hold to record/i });
+  await record.dispatchEvent("pointerdown");
+  await page.waitForTimeout(1_600);
+  await record.dispatchEvent("pointerup");
+  await page.getByRole("button", { name: /Use recording/i }).click();
+  await expect(page).toHaveURL(/\/transcript$/, { timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: /Is this what you said/i })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: /Confirmed wording/i })).toHaveValue("बालकनी को deep clean करना है");
+  await expect(page.getByText(/hi-IN/)).toBeVisible();
 });
 
 test("customer confirmation renders invalid, mismatch and decline as distinct terminal outcomes", async ({

@@ -17,6 +17,8 @@ import { getIncidentGateway } from "../../../services/providers/incident-gateway
 import { getCustomerConfirmationGateway } from "../../../services/providers/customer-confirmation";
 import { CompletionSubmissionConflictError, getCompletionVerificationGateway } from "../../../services/providers/completion-verification";
 import { env } from "../../../config/env";
+import { classifyIncidentAudioQuality, incidentAudioUploadSchema } from "../../../domain/incident-audio";
+import { getSpeechProvider, SpeechProviderError } from "../../../services/providers/speech-provider";
 
 async function requireAccess() {
   const credential = await readBrowserCredential();
@@ -67,6 +69,56 @@ export async function captureRequestAction(formData: FormData) {
         : { modality: "PRESET", presetKey: input.presetKey },
   });
   redirect(`/worker/incidents/${input.incidentKey}/transcript`);
+}
+
+export async function captureVoiceAction(formData: FormData) {
+  const incidentKey = incidentKeySchema.parse(formData.get("incidentKey"));
+  const file = formData.get("audio");
+  const durationMs = z.coerce.number().int().positive().parse(formData.get("durationMs"));
+  if (!(file instanceof File))
+    redirect(`/worker/incidents/${incidentKey}/capture?voiceError=upload`);
+  const metadata = incidentAudioUploadSchema.safeParse({
+    mimeType: file.type,
+    byteLength: file.size,
+    durationMs,
+  });
+  if (!metadata.success)
+    redirect(`/worker/incidents/${incidentKey}/capture?voiceError=unusable`);
+  const localQuality = classifyIncidentAudioQuality({
+    durationMs: metadata.data.durationMs,
+    speechDetected: file.size > 0,
+    clippingDetected: false,
+  });
+  if (localQuality === "UNUSABLE")
+    redirect(`/worker/incidents/${incidentKey}/capture?voiceError=unusable`);
+  const fixtureCase = z.enum(["HINDI_CODEMIX", "MARATHI", "SILENCE", "PROVIDER_FAILURE"])
+    .catch("HINDI_CODEMIX")
+    .parse(formData.get("fixtureCase"));
+  try {
+    const audio = new Uint8Array(await file.arrayBuffer());
+    const providerTranscript = await getSpeechProvider(fixtureCase).transcribe({
+      audio,
+      ...metadata.data,
+      languageHint: "unknown",
+    });
+    const transcript = {
+      ...providerTranscript,
+      quality: localQuality === "RETRY_RECOMMENDED" ? localQuality : providerTranscript.quality,
+    } as const;
+    const access = await requireAccess();
+    await getIncidentGateway().captureVoice({
+      ...access,
+      incidentKey,
+      audio,
+      ...metadata.data,
+      transcript,
+    });
+  } catch (error) {
+    const code = error instanceof SpeechProviderError ? error.code : "PROVIDER_FAILED";
+    const recovery = code === "UNUSABLE_AUDIO" ? "unusable" : code === "TIMEOUT" ? "timeout" : "provider";
+    redirect(`/worker/incidents/${incidentKey}/capture?voiceError=${recovery}`);
+  }
+  redirect(`/worker/incidents/${incidentKey}/transcript`);
 }
 
 export async function confirmTranscriptAction(formData: FormData) {
