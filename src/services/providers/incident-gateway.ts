@@ -15,8 +15,8 @@ import {
   transitionIncident,
   type IncidentStatus,
 } from "../../domain/incident-state";
+import { reviewMappedTaskCandidates } from "../../domain/task-mapping-review";
 import {
-  mapReviewedTaskCandidates,
   normaliseWorkerText,
   resolveReviewedPreset,
 } from "../../domain/incident-input";
@@ -36,6 +36,10 @@ import {
   workerPolicyDecisionViewSchema,
   type WorkerPolicyDecisionView,
 } from "./worker-policy-decision";
+import {
+  taskMappingResultSchema,
+  type TaskMappingResult,
+} from "./task-mapping-provider";
 
 export { workerPolicyDecisionViewSchema } from "./worker-policy-decision";
 export type { WorkerPolicyDecisionView } from "./worker-policy-decision";
@@ -149,7 +153,7 @@ export interface IncidentGateway {
     input: IncidentAccess & { confirmedText: string },
   ): Promise<{ status: "TRANSCRIPT_CONFIRMED" }>;
   prepareCandidates(
-    input: IncidentAccess,
+    input: IncidentAccess & { mapping: TaskMappingResult },
   ): Promise<{
     status: IncidentStatus;
     candidates: Array<{ taskId: string; displayName: string }>;
@@ -192,7 +196,7 @@ const confirmTranscriptRef = makeFunctionReference<
 >("incidents:confirmTranscript");
 const prepareRef = makeFunctionReference<
   "mutation",
-  IncidentAccess,
+  IncidentAccess & { mapping: TaskMappingResult },
   {
     status: IncidentStatus;
     candidates: Array<{ taskId: string; displayName: string }>;
@@ -482,27 +486,17 @@ function fixtureGateway(path: string): IncidentGateway {
       const store = await read();
       const incident = await owned(store, input);
       if (!incident?.confirmedText) throw new Error("Incident is unavailable.");
-      const mapped = mapReviewedTaskCandidates(
-        incident.confirmedText,
-        fixtureCatalogue,
-      );
-      const candidates = mapped.candidates.map(
-        ({ taskId, displayName, matchReason }) => ({
-          taskId,
-          displayName,
-          matchReason,
-        }),
-      );
+      const mapping = taskMappingResultSchema.parse(input.mapping);
+      const { candidates, requiresReview, reviewReason } =
+        reviewMappedTaskCandidates(mapping, fixtureCatalogue);
       const transition = transitionIncident(
         incident.status,
-        { type: mapped.requiresReview ? "ABSTAIN_TO_REVIEW" : "OFFER_CANDIDATES" },
+        { type: requiresReview ? "ABSTAIN_TO_REVIEW" : "OFFER_CANDIDATES" },
         {},
       );
       incident.candidates = candidates;
-      incident.reviewReason = mapped.requiresReview
-        ? candidates.length
-          ? "HIGH_RISK_TASK"
-          : "NO_CATALOGUE_MATCH"
+      incident.reviewReason = requiresReview
+        ? reviewReason
         : null;
       incident.status = transition.nextStatus;
       await write(store);

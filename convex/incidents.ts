@@ -9,6 +9,7 @@ import {
 import { mutation, query } from "./_generated/server";
 import { DEMO_TENANT_ID } from "./fixtures";
 import { transitionIncident } from "../src/domain/incident-state";
+import { reviewMappedTaskCandidates } from "../src/domain/task-mapping-review";
 import {
   appendIncidentTrace,
   findIncidentAccess,
@@ -350,6 +351,36 @@ export const prepareTaskCandidates = mutation({
     publicRunId: v.string(),
     browserTokenHash: v.string(),
     incidentKey: v.string(),
+    mapping: v.optional(v.object({
+      summary: v.string(),
+      candidates: v.array(v.object({
+        taskId: v.string(),
+        displayName: v.string(),
+        matchReason: v.string(),
+      })),
+      ambiguity: v.object({
+        isAmbiguous: v.boolean(),
+        missingFields: v.array(v.string()),
+        conflictingClaims: v.array(v.string()),
+      }),
+      riskSignals: v.array(v.string()),
+      shouldAbstain: v.boolean(),
+      abstentionReason: v.union(v.string(), v.null()),
+      flowVersion: v.string(),
+      promptVersion: v.string(),
+      modelId: v.string(),
+      sourceId: v.string(),
+      sourceVersion: v.string(),
+      providerMetadata: v.object({
+        provider: v.union(v.literal("openai"), v.literal("deterministic")),
+        attemptCount: v.number(),
+        latencyMs: v.number(),
+        inputTokens: v.union(v.number(), v.null()),
+        outputTokens: v.union(v.number(), v.null()),
+        estimatedCostMinor: v.union(v.number(), v.null()),
+        failureCode: v.union(v.string(), v.null()),
+      }),
+    })),
   },
   handler: async (context, args) => {
     const { run, incident, nowIso } = await requireIncidentAccess(
@@ -371,18 +402,55 @@ export const prepareTaskCandidates = mutation({
         range.eq("tenantId", DEMO_TENANT_ID),
       )
       .collect();
-    const mapped = mapReviewedTaskCandidates(
+    const reviewed = mapReviewedTaskCandidates(
       confirmation.confirmedText,
       catalogue,
     );
-    const candidates = mapped.candidates.map(
-      ({ taskId, displayName, matchReason }) => ({
-        taskId,
-        displayName,
-        matchReason,
-      }),
-    );
-    const { requiresReview } = mapped;
+    const mapping = args.mapping ?? {
+      summary: reviewed.requiresReview
+        ? "No safe bounded task selection is available."
+        : "Worker confirmation is required for the bounded task candidate.",
+      candidates: reviewed.candidates.map(
+        ({ taskId, displayName, matchReason }) => ({
+          taskId,
+          displayName,
+          matchReason,
+        }),
+      ),
+      ambiguity: {
+        isAmbiguous: reviewed.candidates.length > 1,
+        missingFields: [],
+        conflictingClaims: [],
+      },
+      riskSignals: reviewed.candidates.some((candidate) => candidate.riskTier >= 3)
+        ? ["HIGH_RISK_TASK"]
+        : [],
+      shouldAbstain: reviewed.requiresReview,
+      abstentionReason: reviewed.requiresReview
+        ? reviewed.candidates.length === 0
+          ? "NO_CATALOGUE_MATCH"
+          : "HIGH_RISK_TASK"
+        : null,
+      flowVersion: FLOW_VERSION,
+      promptVersion: "reviewed-term-mapper-v1",
+      modelId: "deterministic-reviewed-mapper-v1",
+      sourceId: "task-catalog",
+      sourceVersion: catalogue.at(0)?.catalogVersion ?? "unknown-catalogue",
+      providerMetadata: {
+        provider: "deterministic" as const,
+        attemptCount: 1,
+        latencyMs: 0,
+        inputTokens: null,
+        outputTokens: null,
+        estimatedCostMinor: null,
+        failureCode: null,
+      },
+    };
+    const {
+      candidates,
+      requiresReview,
+      reviewReason: abstentionReason,
+    } = reviewMappedTaskCandidates(mapping, catalogue);
     const transition = transitionIncident(
       incident.status,
       { type: requiresReview ? "ABSTAIN_TO_REVIEW" : "OFFER_CANDIDATES" },
@@ -394,20 +462,19 @@ export const prepareTaskCandidates = mutation({
         tenantId: DEMO_TENANT_ID,
         incidentId: incident._id,
         confirmedTranscriptId: confirmation._id,
-        flowVersion: FLOW_VERSION,
-        promptVersion: "reviewed-term-mapper-v1",
-        modelId: "deterministic-reviewed-mapper-v1",
+        flowVersion: mapping.flowVersion,
+        promptVersion: mapping.promptVersion,
+        modelId: mapping.modelId,
+        sourceId: mapping.sourceId,
+        sourceVersion: mapping.sourceVersion,
+        providerMetadata: mapping.providerMetadata,
         reportedRequest: confirmation.confirmedText,
-        summary: requiresReview
-          ? "No safe bounded task selection is available."
-          : "Worker confirmation is required for the bounded task candidate.",
+        summary: mapping.summary,
+        ambiguity: mapping.ambiguity,
+        riskSignals: mapping.riskSignals,
         candidateTasks: candidates,
         shouldAbstain: requiresReview,
-        abstentionReason: requiresReview
-          ? candidates.length === 0
-            ? "NO_CATALOGUE_MATCH"
-            : "HIGH_RISK_TASK"
-          : undefined,
+        abstentionReason: requiresReview ? abstentionReason : undefined,
         createdAt: nowIso,
       },
     );
@@ -417,8 +484,7 @@ export const prepareTaskCandidates = mutation({
         incidentId: incident._id,
         reviewType: "TASK_MAPPING",
         status: "OPEN",
-        reasonCode:
-          candidates.length === 0 ? "NO_CATALOGUE_MATCH" : "HIGH_RISK_TASK",
+        reasonCode: abstentionReason,
         contextSnapshot: { confirmedText: confirmation.confirmedText },
         createdAt: nowIso,
       });
@@ -436,9 +502,9 @@ export const prepareTaskCandidates = mutation({
       inputSummary:
         "Confirmed wording compared with the active task catalogue.",
       outputSummary: requiresReview
-        ? "Mapping abstained and review opened."
+        ? `Mapping abstained (${abstentionReason}) and review opened.`
         : `${candidates.length} bounded candidate offered.`,
-      sourceIds: ["task-catalog-v1"],
+      sourceIds: [mapping.sourceId, mapping.sourceVersion],
       nowIso,
     });
     void interpretationId;

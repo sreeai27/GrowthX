@@ -19,6 +19,11 @@ import { CompletionSubmissionConflictError, getCompletionVerificationGateway } f
 import { env } from "../../../config/env";
 import { classifyIncidentAudioQuality, incidentAudioUploadSchema } from "../../../domain/incident-audio";
 import { getSpeechProvider, SpeechProviderError } from "../../../services/providers/speech-provider";
+import {
+  createOpenAiTaskMappingProvider,
+  createReviewedTaskMappingProvider,
+} from "../../../services/providers/task-mapping-provider";
+import { demoBooking, demoTasks } from "../../../../convex/fixtures";
 
 async function requireAccess() {
   const credential = await readBrowserCredential();
@@ -45,6 +50,35 @@ const presetInputSchema = z.object({
     "SAFETY_CONCERN",
   ]),
 });
+
+async function mapConfirmedReport(confirmedReport: string) {
+  const mapper = env.features.openAiMapping
+    ? createOpenAiTaskMappingProvider({
+        apiKey:
+          env.server.openAiApiKey ??
+          (() => {
+            throw new Error("OPENAI_API_KEY is required when OpenAI mapping is enabled.");
+          })(),
+        model: env.models.interpreter,
+      })
+    : createReviewedTaskMappingProvider();
+  return mapper.mapReport({
+    confirmedReport,
+    booking: {
+      serviceName: demoBooking.serviceName,
+      includedTaskIds: demoBooking.includedTaskIds,
+    },
+    catalogueSource: {
+      sourceId: "task-catalog",
+      sourceVersion: demoBooking.catalogVersion,
+    },
+    catalogue: demoTasks.map(({ taskId, displayName, riskTier }) => ({
+      taskId,
+      displayName,
+      riskTier,
+    })),
+  });
+}
 
 export async function startTaskConfirmAction() {
   const access = await requireAccess();
@@ -130,9 +164,11 @@ export async function confirmTranscriptAction(formData: FormData) {
     .parse(Object.fromEntries(formData));
   const access = await requireAccess();
   await getIncidentGateway().confirmTranscript({ ...access, ...input });
+  const mapping = await mapConfirmedReport(input.confirmedText);
   await getIncidentGateway().prepareCandidates({
     ...access,
     incidentKey: input.incidentKey,
+    mapping,
   });
   redirect(`/worker/incidents/${input.incidentKey}/interpretation`);
 }
@@ -151,7 +187,10 @@ export async function prepareCandidatesAction(formData: FormData) {
     .object({ incidentKey: incidentKeySchema })
     .parse(Object.fromEntries(formData));
   const access = await requireAccess();
-  await getIncidentGateway().prepareCandidates({ ...access, incidentKey });
+  const incident = await getIncidentGateway().get({ ...access, incidentKey });
+  if (!incident?.confirmedText) throw new Error("Confirmed wording is required.");
+  const mapping = await mapConfirmedReport(incident.confirmedText);
+  await getIncidentGateway().prepareCandidates({ ...access, incidentKey, mapping });
   redirect(`/worker/incidents/${incidentKey}/interpretation`);
 }
 

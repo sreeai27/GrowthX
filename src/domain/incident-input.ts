@@ -17,7 +17,7 @@ const reviewedTaskTerms: ReadonlyArray<{
   taskId: string;
   terms: readonly string[];
 }> = [
-  { taskId: "balcony_deep_cleaning", terms: ["balcony", "बालकनी"] },
+  { taskId: "balcony_deep_cleaning", terms: ["balcony", "बालकनी", "बाल्कनी"] },
   { taskId: "inside_cabinet_cleaning", terms: ["cabinet", "कैबिनेट"] },
   { taskId: "wardrobe_assembly", terms: ["wardrobe", "almari", "अलमारी"] },
   {

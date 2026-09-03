@@ -3,6 +3,7 @@ import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 
 import schema from "./schema";
+import type { TaskMappingResult } from "../src/services/providers/task-mapping-provider";
 
 const modules = import.meta.glob("./**/*.ts");
 const seedDemo = makeFunctionReference<
@@ -53,7 +54,12 @@ const getWorkerIncident = makeFunctionReference<
 >("incidents:getWorkerIncident");
 const prepareTaskCandidates = makeFunctionReference<
   "mutation",
-  { publicRunId: string; browserTokenHash: string; incidentKey: string },
+  {
+    publicRunId: string;
+    browserTokenHash: string;
+    incidentKey: string;
+    mapping?: TaskMappingResult;
+  },
   {
     status: "TASK_CONFIRMATION_REQUIRED" | "AWAITING_HUMAN_REVIEW";
     candidates: Array<{ taskId: string; displayName: string }>;
@@ -559,6 +565,85 @@ describe("TaskConfirm incidents", () => {
     ).resolves.toEqual({
       status: "TASK_CONFIRMED",
       selectedTaskId: "balcony_deep_cleaning",
+    });
+  });
+
+  it("rechecks provider candidates and stores mapping trace versions", async () => {
+    const database = convexTest(schema, modules);
+    await createActiveRun(database);
+    const access = {
+      publicRunId: "run_incident_owner",
+      browserTokenHash: "a".repeat(64),
+      incidentKey: "inc_provider_map_123",
+    };
+    await database.mutation(startTaskConfirm, access);
+    await database.mutation(captureRequest, {
+      ...access,
+      input: { modality: "TEXT", text: "Balcony ko deep clean karna hai" },
+    });
+    await database.mutation(confirmTranscript, {
+      ...access,
+      confirmedText: "Balcony ko deep clean karna hai",
+    });
+
+    await database.mutation(prepareTaskCandidates, {
+      ...access,
+      mapping: {
+        summary: "Balcony deep cleaning requested.",
+        candidates: [{
+          taskId: "balcony_deep_cleaning",
+          displayName: "Untrusted display name",
+          matchReason: "The report names balcony deep cleaning.",
+        }],
+        ambiguity: {
+          isAmbiguous: false,
+          missingFields: [],
+          conflictingClaims: [],
+        },
+        riskSignals: [],
+        shouldAbstain: false,
+        abstentionReason: null,
+        flowVersion: "taskconfirm-mapping-v1",
+        promptVersion: "taskconfirm-mapper-v1",
+        modelId: "gpt-test",
+        sourceId: "task-catalog",
+        sourceVersion: "task-catalog-v1",
+        providerMetadata: {
+          provider: "openai",
+          attemptCount: 1,
+          latencyMs: 12,
+          inputTokens: 100,
+          outputTokens: 40,
+          estimatedCostMinor: null,
+          failureCode: null,
+        },
+      },
+    });
+
+    const interpretation = await database.run(async (context) =>
+      context.db.query("exceptionInterpretations").first(),
+    );
+    expect(interpretation).toMatchObject({
+      flowVersion: "taskconfirm-mapping-v1",
+      promptVersion: "taskconfirm-mapper-v1",
+      modelId: "gpt-test",
+      sourceId: "task-catalog",
+      sourceVersion: "task-catalog-v1",
+      providerMetadata: {
+        provider: "openai",
+        attemptCount: 1,
+        latencyMs: 12,
+        inputTokens: 100,
+        outputTokens: 40,
+        estimatedCostMinor: null,
+        failureCode: null,
+      },
+      ambiguity: { isAmbiguous: false },
+      riskSignals: [],
+      candidateTasks: [{
+        taskId: "balcony_deep_cleaning",
+        displayName: "Balcony deep cleaning",
+      }],
     });
   });
 

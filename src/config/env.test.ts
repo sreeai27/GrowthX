@@ -11,6 +11,7 @@ describe("parseEnvironment", () => {
         fixtureMode: false,
       },
       server: {},
+      models: { interpreter: "gpt-5.6-terra" },
     });
   });
 

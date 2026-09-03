@@ -13,6 +13,10 @@ const optionalSecret = z.preprocess(
 const environmentSchema = z.object({
   NEXT_PUBLIC_CONVEX_URL: optionalUrl,
   OPENAI_API_KEY: optionalSecret,
+  OPENAI_MODEL_INTERPRETER: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).default("gpt-5.6-terra"),
+  ),
   SARVAM_API_KEY: optionalSecret,
   DEMO_SESSION_COOKIE_SECRET: optionalSecret,
   FEATURE_VOICE_CAPTURE: z.enum(["true", "false"]).default("false"),
@@ -50,6 +54,7 @@ export function parseEnvironment(input: Record<string, string | undefined>) {
       openAiMapping: parsed.FEATURE_OPENAI_MAPPING === "true",
       fixtureMode: parsed.FEATURE_FIXTURE_MODE === "true",
     },
+    models: { interpreter: parsed.OPENAI_MODEL_INTERPRETER },
     fixtureStorePath: parsed.DEMO_FIXTURE_STORE_PATH,
   };
 }

@@ -245,8 +245,25 @@ export default defineSchema({
     flowVersion: v.string(),
     promptVersion: v.string(),
     modelId: v.string(),
+    sourceId: v.optional(v.string()),
+    sourceVersion: v.optional(v.string()),
+    providerMetadata: v.optional(v.object({
+      provider: v.string(),
+      attemptCount: v.number(),
+      latencyMs: v.number(),
+      inputTokens: v.union(v.number(), v.null()),
+      outputTokens: v.union(v.number(), v.null()),
+      estimatedCostMinor: v.union(v.number(), v.null()),
+      failureCode: v.union(v.string(), v.null()),
+    })),
     reportedRequest: v.string(),
     summary: v.string(),
+    ambiguity: v.optional(v.object({
+      isAmbiguous: v.boolean(),
+      missingFields: v.array(v.string()),
+      conflictingClaims: v.array(v.string()),
+    })),
+    riskSignals: v.optional(v.array(v.string())),
     candidateTasks: v.array(
       v.object({
         taskId: v.string(),
