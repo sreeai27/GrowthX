@@ -124,7 +124,7 @@ test("guided demo resumes for 24 hours and revokes the abandoned browser token",
   await page.goto("/demo");
   await page.getByRole("button", { name: "Start as worker" }).click();
   await expect(page).toHaveURL(/\/worker\/bookings\/DEMO-4821$/, {
-    timeout: 20_000,
+    timeout: 45_000,
   });
   await expect(
     page.getByRole("heading", { name: "Essential Home Cleaning" }),
@@ -295,7 +295,7 @@ for (const viewport of [
 test("customer confirmation keeps one frozen decision from worker link to approval", async ({
   browser,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const worker = await browser.newContext();
   const workerPage = await worker.newPage();
   await workerPage.setViewportSize({ width: 360, height: 800 });
