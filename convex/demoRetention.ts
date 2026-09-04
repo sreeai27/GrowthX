@@ -3,11 +3,22 @@ import type { DataModelFromSchemaDefinition, DocumentByName, GenericMutationCtx,
 
 import { planDemoDeletion } from "../src/domain/demo-retention";
 import { retentionDisposition } from "../src/domain/studio-access";
+import { demonstrationDeletionConfirmationProvider } from "../src/services/providers/deletion-confirmation";
 import { internalMutation, mutation } from "./_generated/server";
 import type schema from "./schema";
 
 type Model = DataModelFromSchemaDefinition<typeof schema>;
 type MutationContext = GenericMutationCtx<Model>;
+
+const decode = (value: string) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+async function decryptDeletionContact(ciphertext: string, iv: string, authTag: string) {
+  const secret = process.env.DEMO_CONTACT_ENCRYPTION_KEY;
+  if (!secret && process.env.NODE_ENV === "production") throw new ConvexError("Deletion confirmation is unavailable.");
+  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret ?? "test-only-private-demo-contact-key"));
+  const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+  const encrypted = new Uint8Array([...decode(ciphertext), ...decode(authTag)]);
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: decode(iv) }, key, encrypted));
+}
 
 async function deleteWhere<Table extends TableNamesInDataModel<Model>>(
   context: MutationContext,
@@ -42,6 +53,24 @@ async function deleteRun(context: MutationContext, runId: string, tenantId: stri
   const contacts = (await context.db.query("demoContacts").collect()).filter(
     (row) => row.tenantId === tenantId && String(row.demoRunId) === runId,
   );
+  const contactIds = new Set(contacts.map((row) => String(row._id)));
+  const accessEvents = (await context.db.query("contactAccessEvents").collect()).filter(
+    (row) => row.tenantId === tenantId && contactIds.has(String(row.contactId)),
+  );
+  for (const event of accessEvents) {
+    await context.db.insert("anonymizedContactAccessEvents", {
+      tenantId, purpose: event.purpose, occurredAt: event.occurredAt, anonymizedAt: new Date().toISOString(),
+    });
+    await context.db.delete(event._id);
+  }
+  const deletionRequests = (await context.db.query("deletionRequests").collect()).filter(
+    (row) => row.tenantId === tenantId && String(row.demoRunId) === runId,
+  );
+  const deletionRequestIds = new Set(deletionRequests.map((row) => String(row._id)));
+  await deleteWhere(context, "deletionReviews", (row) =>
+    row.tenantId === tenantId && deletionRequestIds.has(String(row.deletionRequestId)),
+  );
+  for (const row of deletionRequests) await context.db.delete(row._id);
   await deleteWhere(context, "demoDeliveries", (row) =>
     row.tenantId === tenantId && String(row.demoRunId) === runId,
   );
@@ -141,8 +170,18 @@ export const confirmDeletion = mutation({
     await requireAdmin(context, args.tenantId, args.sessionTokenHash, args.now);
     const request = await context.db.get(args.deletionRequestId);
     if (!request || request.tenantId !== args.tenantId || request.status !== "APPROVED") throw new ConvexError("Deletion approval is not ready for confirmation.");
-    await context.db.patch(request._id, { status: "APPROVED_FOR_DELETION", approvalConfirmedAt: args.now, updatedAt: args.now });
-    return { status: "APPROVED_FOR_DELETION" as const, confirmedAt: args.now };
+    const contact = await context.db.get(request.contactId);
+    if (!contact || contact.tenantId !== args.tenantId) throw new ConvexError("Deletion contact is unavailable for confirmation.");
+    const receipt = await demonstrationDeletionConfirmationProvider.send({
+      deletionRequestId: String(request._id), channel: contact.type,
+      destination: await decryptDeletionContact(contact.contactCiphertext, contact.contactIv, contact.contactAuthTag), deliveredAt: args.now,
+    });
+    if (receipt.status !== "DELIVERED") throw new ConvexError("Deletion confirmation was not delivered.");
+    await context.db.patch(request._id, {
+      status: "APPROVED_FOR_DELETION", approvalConfirmedAt: receipt.deliveredAt,
+      confirmationProvider: receipt.provider, confirmationReceiptId: receipt.providerMessageId, confirmationStatus: receipt.status, updatedAt: args.now,
+    });
+    return { status: "APPROVED_FOR_DELETION" as const, confirmedAt: receipt.deliveredAt, receiptId: receipt.providerMessageId };
   },
 });
 
@@ -155,14 +194,17 @@ export const executeApprovedDeletion = mutation({
     const request = await context.db.get(args.deletionRequestId);
     if (!actor || actor.role !== "PLATFORM_ADMIN" || !request || request.tenantId !== session.tenantId) throw new ConvexError("NOT_AUTHORISED");
     if (request.status !== "APPROVED_FOR_DELETION") throw new ConvexError("Deletion is not approved for execution.");
+    if (!request.confirmationProvider || !request.confirmationReceiptId) throw new ConvexError("Deletion confirmation has no delivery receipt.");
     planDemoDeletion({ approvedAt: request.updatedAt, confirmedAt: request.approvalConfirmedAt ?? null });
     await deleteRun(context, String(request.demoRunId), request.tenantId);
-    await context.db.patch(request._id, { status: "DELETED", updatedAt: args.now });
     await context.db.insert("retentionReceipts", {
       tenantId: request.tenantId,
       receiptType: "DELETION",
       anonymousRecordCount: 1,
       completedAt: args.now,
+      confirmationProvider: request.confirmationProvider,
+      confirmationReceiptId: request.confirmationReceiptId,
+      confirmationStatus: "DELIVERED",
     });
     return { deletedRuns: 1, anonymousRunCount: 1 };
   },

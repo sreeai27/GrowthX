@@ -1,10 +1,18 @@
 import { makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+function sealContact(value: string) {
+  const key = createHash("sha256").update("test-only-private-demo-contact-key").digest();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return { contactCiphertext: ciphertext.toString("base64"), contactIv: iv.toString("base64"), contactAuthTag: cipher.getAuthTag().toString("base64") };
+}
 const expireRuns = makeFunctionReference<
   "mutation",
   { now: string; batchLimit: number },
@@ -112,6 +120,7 @@ describe("public demo retention execution", () => {
       links: await context.db.query("demoResultLinks").collect(),
       invitations: await context.db.query("retainedInvitations").collect(),
       accessEvents: await context.db.query("contactAccessEvents").collect(),
+      anonymizedAccessEvents: await context.db.query("anonymizedContactAccessEvents").collect(),
     }));
     expect(remaining.runs).toEqual([]);
     expect(remaining.contacts).toEqual([]);
@@ -119,11 +128,16 @@ describe("public demo retention execution", () => {
     expect(remaining.invitations).toEqual([
       expect.objectContaining({ maskedDisplay: "s***@example.test", expiresAt: "2026-10-01T00:00:00.000Z" }),
     ]);
-    expect(remaining.accessEvents).toHaveLength(1);
+    expect(remaining.accessEvents).toHaveLength(0);
+    expect(remaining.anonymizedAccessEvents).toEqual([
+      expect.objectContaining({ purpose: "RESULT_DELIVERY", occurredAt: "2026-07-01T01:00:00.000Z" }),
+    ]);
+    expect(JSON.stringify(remaining.anonymizedAccessEvents)).not.toMatch(/contactId|studioUserId|audit-admin|private-contact/i);
   });
 
   it("requires confirmed approval and will not bypass an uncertain second review", async () => {
     const database = convexTest(schema, modules);
+    const sealedContact = sealContact("visitor@example.test");
     const seeded = await database.run(async (context) => {
       const userId = await context.db.insert("studioUsers", {
         tenantId: "demo_sahaay_home_services", identityId: "admin-meera", emailHash: "admin-hash",
@@ -146,7 +160,7 @@ describe("public demo retention execution", () => {
         bookingKey: "DEMO-4821", startedAt: "2026-09-01T00:00:00.000Z", lastActiveAt: "2026-09-01T00:00:00.000Z", resumeExpiresAt: "2026-09-02T00:00:00.000Z",
       });
       const contactId = await context.db.insert("demoContacts", {
-        tenantId: "demo_sahaay_home_services", demoRunId: runId, type: "EMAIL", contactCiphertext: "private", contactIv: "iv", contactAuthTag: "tag", contactLookupHash: "lookup", maskedDisplay: "m***@example.test", verificationState: "UNVERIFIED", deliveryPurposeExpiresAt: "2026-10-01T00:00:00.000Z", invitationConsent: false, createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z",
+        tenantId: "demo_sahaay_home_services", demoRunId: runId, type: "EMAIL", ...sealedContact, contactLookupHash: "lookup", maskedDisplay: "m***@example.test", verificationState: "UNVERIFIED", deliveryPurposeExpiresAt: "2026-10-01T00:00:00.000Z", invitationConsent: false, createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z",
       });
       const requestId = await context.db.insert("deletionRequests", {
         tenantId: "demo_sahaay_home_services", contactId, demoRunId: runId, requestedBy: "visitor", requestEvidence: "email request", status: "PENDING", dueAt: "2026-09-08T00:00:00.000Z", createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-05T11:00:00.000Z",
@@ -157,7 +171,7 @@ describe("public demo retention execution", () => {
     await expect(database.mutation(reviewDeletion, { ...base, sessionTokenHash: "session-hash", decision: "UNCERTAIN", reason: "Evidence needs another review." })).resolves.toEqual({ status: "UNCERTAIN" });
     await expect(database.mutation(reviewDeletion, { ...base, sessionTokenHash: "session-hash", decision: "APPROVE", reason: "Trying my own second review." })).rejects.toThrow("different platform administrator");
     await expect(database.mutation(reviewDeletion, { ...base, sessionTokenHash: "second-session-hash", decision: "APPROVE", reason: "Evidence confirms the visitor request." })).resolves.toEqual({ status: "APPROVED" });
-    await expect(database.mutation(confirmDeletion, { ...base, sessionTokenHash: "second-session-hash" })).resolves.toEqual({ status: "APPROVED_FOR_DELETION", confirmedAt: base.now });
+    await expect(database.mutation(confirmDeletion, { ...base, sessionTokenHash: "second-session-hash" })).resolves.toMatchObject({ status: "APPROVED_FOR_DELETION", confirmedAt: base.now, receiptId: expect.stringContaining("deletion-confirmation-") });
     const confirmed = await database.run((context) => context.db.get(seeded.requestId));
     expect(confirmed).toMatchObject({ status: "APPROVED_FOR_DELETION", approvalConfirmedAt: base.now });
     const args = { sessionTokenHash: "session-hash", deletionRequestId: seeded.requestId, now: base.now };
@@ -165,9 +179,14 @@ describe("public demo retention execution", () => {
     const audit = await database.run(async (context) => ({
       request: await context.db.get(seeded.requestId),
       reviews: await context.db.query("deletionReviews").collect(),
+      receipts: await context.db.query("retentionReceipts").collect(),
     }));
-    expect(audit.request).toMatchObject({ status: "DELETED", approvalConfirmedAt: base.now });
-    expect(audit.reviews).toHaveLength(2);
+    expect(audit.request).toBeNull();
+    expect(audit.reviews).toHaveLength(0);
+    expect(audit.receipts).toEqual([
+      expect.objectContaining({ receiptType: "DELETION", anonymousRecordCount: 1, confirmationProvider: "DEMONSTRATION_NOTIFICATION_PROVIDER" }),
+    ]);
+    expect(JSON.stringify(audit.receipts)).not.toMatch(/visitor|email request|admin-meera|admin-kabir|lookup/i);
   });
 
   it("permits only one reasoned review of a refusal", async () => {

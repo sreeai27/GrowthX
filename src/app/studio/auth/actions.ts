@@ -2,14 +2,19 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { getStudioContactGateway } from "../contacts/studio-contact-gateway";
 import { env } from "../../../config/env";
 import { issueFixtureStudioSession, newStudioSessionToken, studioSessionCookieName } from "./session";
 
+const studioSignInInput = z.object({ oneTimeToken: z.string().trim().min(1) });
+
 export async function signInStudio(data: FormData) {
-  const oneTimeToken = String(data.get("oneTimeToken") ?? "");
+  const parsed = studioSignInInput.safeParse(Object.fromEntries(data));
+  if (!parsed.success) redirect("/studio/sign-in?error=expired-or-invalid");
+  const { oneTimeToken } = parsed.data;
   const sessionToken = newStudioSessionToken();
-  const session = oneTimeToken ? await getStudioContactGateway().consumeSignIn(oneTimeToken, sessionToken) : null;
+  const session = await getStudioContactGateway().consumeSignIn(oneTimeToken, sessionToken);
   if (!session) redirect("/studio/sign-in?error=expired-or-invalid");
   let cookieValue = sessionToken;
   if (env.features.fixtureMode) {

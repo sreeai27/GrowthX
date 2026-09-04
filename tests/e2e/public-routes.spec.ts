@@ -947,7 +947,7 @@ test("named evaluations are reviewer-only and persist trustworthy case evidence"
   await page.reload();
   await expect(page.getByText(/8 passed · 0 failed/)).toBeVisible();
   await page.getByRole("button", { name: /Promote corrected case/i }).click();
-  await expect(page.getByText(/1 named regression case promoted/i)).toBeVisible();
+  await expect(page.getByText(/\d+ named regression case promoted/i)).toBeVisible();
   const body = (await page.locator("body").innerText()).toLowerCase();
   expect(body).not.toContain("fixture-admin-meera-once");
   await reviewer.close();

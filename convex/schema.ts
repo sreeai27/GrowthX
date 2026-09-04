@@ -18,10 +18,15 @@ export default defineSchema({
     tenantId: v.string(), studioUserId: v.id("studioUsers"), contactId: v.id("demoContacts"),
     purpose: v.union(v.literal("RESULT_DELIVERY"), v.literal("ACCOUNT_INVITATION")), occurredAt: v.string(),
   }).index("by_tenant_contact", ["tenantId", "contactId"]).index("by_tenant_actor", ["tenantId", "studioUserId"]),
+  anonymizedContactAccessEvents: defineTable({
+    tenantId: v.string(), purpose: v.union(v.literal("RESULT_DELIVERY"), v.literal("ACCOUNT_INVITATION")),
+    occurredAt: v.string(), anonymizedAt: v.string(),
+  }).index("by_tenant_occurred", ["tenantId", "occurredAt"]),
   deletionRequests: defineTable({
     tenantId: v.string(), contactId: v.id("demoContacts"), demoRunId: v.id("demoRuns"),
     requestedBy: v.string(), requestEvidence: v.string(), requestReason: v.optional(v.string()), status: v.union(v.literal("PENDING"), v.literal("APPROVED"), v.literal("UNCERTAIN"), v.literal("REFUSED"), v.literal("APPROVED_FOR_DELETION"), v.literal("DELETED")),
     dueAt: v.string(), createdAt: v.string(), updatedAt: v.string(), approvalConfirmedAt: v.optional(v.string()),
+    confirmationProvider: v.optional(v.literal("DEMONSTRATION_NOTIFICATION_PROVIDER")), confirmationReceiptId: v.optional(v.string()), confirmationStatus: v.optional(v.literal("DELIVERED")),
   }).index("by_tenant_status", ["tenantId", "status"]).index("by_tenant_contact", ["tenantId", "contactId"]),
   deletionReviews: defineTable({
     tenantId: v.string(), deletionRequestId: v.id("deletionRequests"), reviewerUserId: v.id("studioUsers"),
@@ -35,6 +40,7 @@ export default defineSchema({
   retentionReceipts: defineTable({
     tenantId: v.string(), receiptType: v.union(v.literal("EXPIRY"), v.literal("DELETION")),
     anonymousRecordCount: v.number(), completedAt: v.string(),
+    confirmationProvider: v.optional(v.literal("DEMONSTRATION_NOTIFICATION_PROVIDER")), confirmationReceiptId: v.optional(v.string()), confirmationStatus: v.optional(v.literal("DELIVERED")),
   }).index("by_tenant_completed", ["tenantId", "completedAt"]),
   tenants: defineTable({
     tenantId: v.string(),

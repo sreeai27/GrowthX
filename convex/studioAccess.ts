@@ -5,7 +5,7 @@ import {
   consumeOneTimeLink,
   issueOneTimeLink,
 } from "../src/domain/studio-access";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 
 const TENANT_ID = "demo_sahaay_home_services";
 
@@ -38,7 +38,8 @@ async function activeSession(ctx: any, tenantId: string, sessionTokenHash: strin
   return { session, user };
 }
 
-export const issueSignInLink = mutation({
+// Only trusted server code may issue a link. Public clients can only consume one.
+export const issueSignInLink = internalMutation({
   args: { tenantId: v.string(), emailHash: v.string(), tokenHash: v.string() },
   handler: async (ctx, args) => {
     if (args.tenantId !== TENANT_ID) return null;
