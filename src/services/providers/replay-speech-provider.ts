@@ -19,5 +19,5 @@ export async function resolveReplaySpeech(text: string, generate?: GeneratedRepl
       // Speech is optional; the reviewed local asset keeps practice available.
     }
   }
-  return { url: "/audio/taskconfirm-balcony-reviewed.wav", source: "REVIEWED_FALLBACK", provider: "REVIEWED_FIXTURE", modelId: "reviewed-audio-v1" };
+  return { url: "/audio/taskconfirm-balcony-reviewed.mp3", source: "REVIEWED_FALLBACK", provider: "REVIEWED_FIXTURE", modelId: "reviewed-audio-v1" };
 }

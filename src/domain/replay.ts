@@ -59,7 +59,7 @@ export function createReviewedReplay(): Replay {
     source: { id: "taskconfirm-scope-policy", version: "1.0.0" },
     rubric: { version: "taskconfirm-replay-rubric-v1", expectedAction: "OPEN_TASK_CONFIRM" },
     generator: { provider: "REVIEWED_FIXTURE", modelId: "reviewed-fixture-v1", promptVersion: "taskconfirm-replay-prompt-v1" },
-    reviewedAudioPath: "/audio/taskconfirm-balcony-reviewed.wav",
+    reviewedAudioPath: "/audio/taskconfirm-balcony-reviewed.mp3",
   });
 }
 
