@@ -129,6 +129,20 @@ test("Hunar OS landing explains the connected system on mobile and desktop", asy
   }
 });
 
+test("KaamSaathi offers honest demo and future-pack choices on mobile and desktop", async ({ page }) => {
+  for (const viewport of [{ width: 360, height: 800 }, { width: 1280, height: 800 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/kaam-saathi");
+    await expect(page.getByRole("link", { name: /Choose a demo/i })).toHaveAttribute("href", "#demos");
+    await expect(page.getByText("Live demo")).toBeVisible();
+    await expect(page.getByText("Demo preview")).toBeVisible();
+    await page.getByText("Pin Rescue", { exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Frontline problem" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /Open TaskConfirm/i })).toHaveAttribute("href", "/demo");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+});
+
 test("guided demo resumes for 24 hours and revokes the abandoned browser token", async ({
   page,
   context,
@@ -1199,7 +1213,7 @@ const shells = [
   {
     name: "worker",
     path: "/kaam-saathi",
-    heading: "Agree on the next step, without guessing.",
+    heading: "When the job changes, get everyone on the same next step.",
     wordmark: "KaamSaathi कामसाथी",
   },
 ] as const;
