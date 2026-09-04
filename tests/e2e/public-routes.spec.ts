@@ -111,9 +111,22 @@ test("public audience shells render", async ({ request }) => {
     request.get("/kaam-saathi"),
   ]);
   expect(await operator.text()).toContain(
-    "Frontline exceptions become governed actions.",
+    "When frontline work leaves the happy path, resolve the next step.",
   );
   expect(await worker.text()).toContain("जब काम बदलता है");
+});
+
+test("Hunar OS landing explains the connected system on mobile and desktop", async ({ page }) => {
+  for (const viewport of [{ width: 360, height: 800 }, { width: 1280, height: 800 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/hunar-os");
+    await expect(page.getByText("Available · protected")).toBeVisible();
+    await expect(page.getByText("Platform preview")).toBeVisible();
+    await expect(page.getByText("Coming soon")).toBeVisible();
+    await expect(page.getByRole("link", { name: /See the resolution trace/i })).toHaveAttribute("href", "/trace");
+    await expect(page.getByRole("link", { name: /Open KaamSaathi/i }).first()).toHaveAttribute("href", "/kaam-saathi");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
 });
 
 test("guided demo resumes for 24 hours and revokes the abandoned browser token", async ({
@@ -1180,7 +1193,7 @@ const shells = [
   {
     name: "operator",
     path: "/hunar-os",
-    heading: "Frontline exceptions become governed actions.",
+    heading: "When frontline work leaves the happy path, resolve the next step.",
     wordmark: "Hunar OS",
   },
   {
