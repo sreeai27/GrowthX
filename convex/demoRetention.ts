@@ -1,0 +1,162 @@
+import { ConvexError, v } from "convex/values";
+import type { DataModelFromSchemaDefinition, DocumentByName, GenericMutationCtx, TableNamesInDataModel } from "convex/server";
+
+import { planDemoDeletion } from "../src/domain/demo-retention";
+import { retentionDisposition } from "../src/domain/studio-access";
+import { internalMutation, mutation } from "./_generated/server";
+import type schema from "./schema";
+
+type Model = DataModelFromSchemaDefinition<typeof schema>;
+type MutationContext = GenericMutationCtx<Model>;
+
+async function deleteWhere<Table extends TableNamesInDataModel<Model>>(
+  context: MutationContext,
+  table: Table,
+  matches: (row: DocumentByName<Model, Table>) => boolean,
+) {
+  const rows = await context.db.query(table).collect();
+  for (const row of rows) {
+    if (matches(row)) await context.db.delete(row._id);
+  }
+  return rows.filter(matches).length;
+}
+
+async function deleteRun(context: MutationContext, runId: string, tenantId: string) {
+  const incidents = (await context.db.query("incidents").collect()).filter(
+    (row) => row.tenantId === tenantId && String(row.demoRunId) === runId,
+  );
+  const incidentIds = new Set(incidents.map((row) => String(row._id)));
+  const belongsToIncident = (row: { tenantId: string; incidentId: unknown }) =>
+    row.tenantId === tenantId && incidentIds.has(String(row.incidentId));
+
+  for (const table of ["verificationEvents", "capabilityEvents", "replayAttempts", "completionSummaries", "actionExecutions", "confirmationRequests", "policyDecisions", "taskConfirmations", "humanReviews", "exceptionInterpretations", "transcriptConfirmations", "transcripts", "traceSteps"] as const) {
+    await deleteWhere(context, table, belongsToIncident);
+  }
+  const media = (await context.db.query("mediaInputs").collect()).filter((row) => belongsToIncident(row));
+  for (const row of media) {
+    if (row.rawAudioStorageId) await context.storage.delete(row.rawAudioStorageId);
+    await context.db.delete(row._id);
+  }
+  await deleteWhere(context, "replays", belongsToIncident);
+
+  const requests = (await context.db.query("deletionRequests").collect()).filter(
+    (row) => row.tenantId === tenantId && String(row.demoRunId) === runId,
+  );
+  const requestIds = new Set(requests.map((row) => String(row._id)));
+  await deleteWhere(context, "deletionReviews", (row) =>
+    row.tenantId === tenantId && requestIds.has(String(row.deletionRequestId)),
+  );
+  for (const row of requests) await context.db.delete(row._id);
+
+  const contacts = (await context.db.query("demoContacts").collect()).filter(
+    (row) => row.tenantId === tenantId && String(row.demoRunId) === runId,
+  );
+  const contactIds = new Set(contacts.map((row) => String(row._id)));
+  await deleteWhere(context, "contactAccessEvents", (row) =>
+    row.tenantId === tenantId && contactIds.has(String(row.contactId)),
+  );
+  await deleteWhere(context, "demoDeliveries", (row) =>
+    row.tenantId === tenantId && String(row.demoRunId) === runId,
+  );
+  await deleteWhere(context, "demoResultLinks", (row) =>
+    row.tenantId === tenantId && String(row.demoRunId) === runId,
+  );
+  for (const row of contacts) await context.db.delete(row._id);
+  for (const incident of incidents) await context.db.delete(incident._id);
+  await context.db.delete(runId as never);
+}
+
+async function expireHandler(
+  context: MutationContext,
+  args: { now?: string; batchLimit?: number },
+) {
+  const now = args.now ? new Date(args.now) : new Date();
+  if (Number.isNaN(now.getTime())) throw new ConvexError("A valid UTC expiry time is required.");
+  const batchLimit = Math.max(1, Math.min(args.batchLimit ?? 25, 100));
+  const runs = (await context.db.query("demoRuns").collect())
+    .filter((run) => retentionDisposition({ createdAt: run.startedAt, now }).disposition === "DELETE_PERSONAL_DATA")
+    .slice(0, batchLimit);
+  for (const run of runs) {
+    await deleteRun(context, String(run._id), run.tenantId);
+    await context.db.insert("retentionReceipts", {
+      tenantId: run.tenantId,
+      receiptType: "EXPIRY",
+      anonymousRecordCount: 1,
+      completedAt: now.toISOString(),
+    });
+  }
+  return { deletedRuns: runs.length, anonymousRunCount: runs.length };
+}
+
+async function requireAdmin(context: MutationContext, tenantId: string, sessionTokenHash: string, now: string) {
+  const session = await context.db.query("studioSessions").withIndex("by_session_token_hash", (q) => q.eq("sessionTokenHash", sessionTokenHash)).unique();
+  if (!session || session.tenantId !== tenantId || session.revokedAt || session.expiresAt <= now) throw new ConvexError("NOT_AUTHORISED");
+  const actor = await context.db.get(session.studioUserId);
+  if (!actor || actor.tenantId !== tenantId || actor.role !== "PLATFORM_ADMIN" || actor.status !== "ACTIVE") throw new ConvexError("NOT_AUTHORISED");
+  return actor;
+}
+
+export const expirePublicDemoRuns = internalMutation({
+  args: { now: v.optional(v.string()), batchLimit: v.optional(v.number()) },
+  handler: expireHandler,
+});
+
+export const reviewDeletion = mutation({
+  args: {
+    tenantId: v.string(), sessionTokenHash: v.string(), deletionRequestId: v.id("deletionRequests"),
+    decision: v.union(v.literal("APPROVE"), v.literal("REFUSE"), v.literal("UNCERTAIN")), reason: v.string(), now: v.string(),
+  },
+  handler: async (context, args) => {
+    const actor = await requireAdmin(context, args.tenantId, args.sessionTokenHash, args.now);
+    const request = await context.db.get(args.deletionRequestId);
+    if (!request || request.tenantId !== args.tenantId || !args.reason.trim()) throw new ConvexError("A review reason is required.");
+    const reviews = (await context.db.query("deletionReviews").withIndex("by_tenant_request", (q) => q.eq("tenantId", args.tenantId)).collect())
+      .filter((review) => review.deletionRequestId === request._id);
+    if (request.status === "PENDING") {
+      await context.db.insert("deletionReviews", { tenantId: args.tenantId, deletionRequestId: request._id, reviewerUserId: actor._id, decision: args.decision, reason: args.reason.trim(), reviewedAt: args.now });
+      const status = args.decision === "APPROVE" ? "APPROVED" as const : args.decision === "UNCERTAIN" ? "UNCERTAIN" as const : "REFUSED" as const;
+      await context.db.patch(request._id, { status, updatedAt: args.now });
+      return { status };
+    }
+    if (request.status !== "UNCERTAIN" && request.status !== "REFUSED") throw new ConvexError("This deletion request cannot be reviewed.");
+    if (reviews.length !== 1) throw new ConvexError("This deletion request cannot be reviewed again.");
+    if (reviews[0]?.reviewerUserId === actor._id) throw new ConvexError("A different platform administrator must perform the second review.");
+    if (args.decision === "UNCERTAIN") throw new ConvexError("Second review must approve or refuse the request.");
+    await context.db.insert("deletionReviews", { tenantId: args.tenantId, deletionRequestId: request._id, reviewerUserId: actor._id, decision: args.decision, reason: args.reason.trim(), reviewedAt: args.now });
+    const status = args.decision === "APPROVE" ? "APPROVED" as const : "REFUSED" as const;
+    await context.db.patch(request._id, { status, updatedAt: args.now });
+    return { status };
+  },
+});
+
+export const confirmDeletion = mutation({
+  args: { tenantId: v.string(), sessionTokenHash: v.string(), deletionRequestId: v.id("deletionRequests"), now: v.string() },
+  handler: async (context, args) => {
+    await requireAdmin(context, args.tenantId, args.sessionTokenHash, args.now);
+    const request = await context.db.get(args.deletionRequestId);
+    if (!request || request.tenantId !== args.tenantId || request.status !== "APPROVED") throw new ConvexError("Deletion approval is not ready for confirmation.");
+    await context.db.patch(request._id, { status: "APPROVED_FOR_DELETION", approvalConfirmedAt: args.now, updatedAt: args.now });
+    return { status: "APPROVED_FOR_DELETION" as const, confirmedAt: args.now };
+  },
+});
+
+export const executeApprovedDeletion = mutation({
+  args: { sessionTokenHash: v.string(), deletionRequestId: v.id("deletionRequests"), now: v.string() },
+  handler: async (context, args) => {
+    const session = await context.db.query("studioSessions").withIndex("by_session_token_hash", (q) => q.eq("sessionTokenHash", args.sessionTokenHash)).unique();
+    if (!session) throw new ConvexError("NOT_AUTHORISED");
+    const actor = await requireAdmin(context, session.tenantId, args.sessionTokenHash, args.now);
+    const request = await context.db.get(args.deletionRequestId);
+    if (!actor || actor.role !== "PLATFORM_ADMIN" || !request || request.tenantId !== session.tenantId) throw new ConvexError("NOT_AUTHORISED");
+    if (request.status !== "APPROVED_FOR_DELETION") throw new ConvexError("Deletion is not approved for execution.");
+    planDemoDeletion({ approvedAt: request.updatedAt, confirmedAt: request.approvalConfirmedAt ?? null });
+    await deleteRun(context, String(request.demoRunId), request.tenantId);
+    await context.db.insert("retentionReceipts", {
+      tenantId: request.tenantId,
+      receiptType: "DELETION",
+      anonymousRecordCount: 1,
+      completedAt: args.now,
+    });
+    return { deletedRuns: 1, anonymousRunCount: 1 };
+  },
+});

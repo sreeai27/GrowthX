@@ -2,6 +2,35 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  studioUsers: defineTable({
+    tenantId: v.string(), identityId: v.string(), emailHash: v.string(), displayName: v.string(),
+    role: v.union(v.literal("OPERATOR"), v.literal("PLATFORM_ADMIN")), status: v.literal("ACTIVE"), createdAt: v.string(),
+  }).index("by_tenant_identity", ["tenantId", "identityId"]).index("by_tenant_email_hash", ["tenantId", "emailHash"]),
+  studioSignInLinks: defineTable({
+    tenantId: v.string(), studioUserId: v.id("studioUsers"), tokenHash: v.string(),
+    expiresAt: v.string(), consumedAt: v.optional(v.string()), createdAt: v.string(),
+  }).index("by_token_hash", ["tokenHash"]).index("by_tenant_user", ["tenantId", "studioUserId"]),
+  studioSessions: defineTable({
+    tenantId: v.string(), studioUserId: v.id("studioUsers"), sessionTokenHash: v.string(),
+    expiresAt: v.string(), revokedAt: v.optional(v.string()), createdAt: v.string(), lastActiveAt: v.string(),
+  }).index("by_session_token_hash", ["sessionTokenHash"]).index("by_tenant_user", ["tenantId", "studioUserId"]),
+  contactAccessEvents: defineTable({
+    tenantId: v.string(), studioUserId: v.id("studioUsers"), contactId: v.id("demoContacts"),
+    purpose: v.union(v.literal("RESULT_DELIVERY"), v.literal("ACCOUNT_INVITATION")), occurredAt: v.string(),
+  }).index("by_tenant_contact", ["tenantId", "contactId"]).index("by_tenant_actor", ["tenantId", "studioUserId"]),
+  deletionRequests: defineTable({
+    tenantId: v.string(), contactId: v.id("demoContacts"), demoRunId: v.id("demoRuns"),
+    requestedBy: v.string(), requestEvidence: v.string(), status: v.union(v.literal("PENDING"), v.literal("APPROVED"), v.literal("UNCERTAIN"), v.literal("REFUSED"), v.literal("APPROVED_FOR_DELETION"), v.literal("DELETED")),
+    dueAt: v.string(), createdAt: v.string(), updatedAt: v.string(), approvalConfirmedAt: v.optional(v.string()),
+  }).index("by_tenant_status", ["tenantId", "status"]).index("by_tenant_contact", ["tenantId", "contactId"]),
+  deletionReviews: defineTable({
+    tenantId: v.string(), deletionRequestId: v.id("deletionRequests"), reviewerUserId: v.id("studioUsers"),
+    decision: v.union(v.literal("APPROVE"), v.literal("REFUSE"), v.literal("UNCERTAIN")), reason: v.string(), reviewedAt: v.string(),
+  }).index("by_tenant_request", ["tenantId", "deletionRequestId"]),
+  retentionReceipts: defineTable({
+    tenantId: v.string(), receiptType: v.union(v.literal("EXPIRY"), v.literal("DELETION")),
+    anonymousRecordCount: v.number(), completedAt: v.string(),
+  }).index("by_tenant_completed", ["tenantId", "completedAt"]),
   tenants: defineTable({
     tenantId: v.string(),
     name: v.string(),

@@ -950,6 +950,32 @@ test("named evaluations are reviewer-only and persist trustworthy case evidence"
   await reviewer.close();
 });
 
+test("Studio operators see masked contacts while administrators record a reveal reason", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const operator = await browser.newContext();
+  const operatorPage = await operator.newPage();
+  await operatorPage.goto("/studio/sign-in");
+  await operatorPage.getByLabel(/One-time access token/i).fill("fixture-operator-once");
+  await operatorPage.getByRole("button", { name: /Open Studio/i }).click();
+  await expect(operatorPage.getByText("a***a@example.com")).toBeVisible();
+  await expect(operatorPage.getByRole("button", { name: /Reveal/i })).toHaveCount(0);
+  await operator.close();
+
+  const admin = await browser.newContext();
+  const adminPage = await admin.newPage();
+  await adminPage.goto("/studio/sign-in");
+  await adminPage.getByLabel(/One-time access token/i).fill("fixture-admin-kabir-once");
+  await adminPage.getByRole("button", { name: /Open Studio/i }).click();
+  await adminPage.getByRole("link", { name: /Review access/i }).click();
+  await expect(adminPage.getByText(/recorded permitted reason/i)).toBeVisible();
+  await adminPage.getByLabel(/Permitted reason/i).selectOption("RESULT_DELIVERY");
+  await adminPage.getByRole("button", { name: /Reveal and record access/i }).click();
+  await expect(adminPage.getByText("asha@example.com", { exact: true })).toBeVisible();
+  const cookie = (await admin.cookies()).find((item) => item.name === "hunar_studio_session");
+  expect(cookie).toMatchObject({ httpOnly: true, sameSite: "Lax" });
+  await admin.close();
+});
+
 test("voice capture is deliberate and microphone denial keeps typed recovery available", async ({ page }) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => {

@@ -15,6 +15,10 @@ const server = spawn(
       DEMO_SESSION_COOKIE_SECRET:
         "fixture-only-cookie-secret-at-least-32-bytes",
       STUDIO_REVIEWER_TOKEN: "fixture-reviewer-token",
+      STUDIO_OPERATOR_TOKEN: "fixture-operator-once",
+      STUDIO_ADMIN_MEERA_TOKEN: "fixture-admin-meera-once",
+      STUDIO_ADMIN_KABIR_TOKEN: "fixture-admin-kabir-once",
+      STUDIO_SESSION_SECRET: "fixture-studio-session-secret-at-least-32-bytes",
     },
   },
 );
