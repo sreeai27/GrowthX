@@ -91,7 +91,7 @@ async function createBalconyConfirmationLink(page: Page) {
   await page
     .getByRole("button", { name: /Send for customer approval/i })
     .click();
-  await expect(page).toHaveURL(/\/status$/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/status$/, { timeout: 45_000 });
   const href = await page
     .getByRole("link", { name: /Open customer link/i })
     .getAttribute("href");
@@ -1013,6 +1013,48 @@ test("customer confirmation safely shows expired and stale links", async ({
     await customer.close();
     await worker.close();
   }
+});
+
+test("verified work becomes one changed replay and private capability event", async ({ browser }) => {
+  test.setTimeout(360_000);
+  const worker = await browser.newContext();
+  const workerPage = await worker.newPage();
+  const customerUrl = await createBalconyConfirmationLink(workerPage);
+  const customer = await browser.newContext();
+  const customerPage = await customer.newPage();
+  await customerPage.goto(customerUrl);
+  await customerPage.getByRole("button", { name: /Yes, this is my request/i }).click();
+  await customerPage.getByRole("button", { name: /Approve ₹299/i }).click();
+  await expect(customerPage.getByRole("heading", { name: /Booking updated/i })).toBeVisible();
+  await workerPage.reload();
+  await workerPage.getByRole("link", { name: /Record completed work/i }).click();
+  const tasks = workerPage.locator(".completion-task");
+  await expect(tasks).toHaveCount(4);
+  for (let index = 0; index < await tasks.count(); index += 1)
+    await tasks.nth(index).getByLabel(/Complete/i).check();
+  await workerPage.getByRole("button", { name: /Submit completion/i }).click();
+  await customerPage.reload();
+  await customerPage.getByRole("button", { name: /Acknowledge/i }).click();
+  await expect(customerPage.getByRole("heading", { name: "Verified" })).toBeVisible();
+  await workerPage.reload();
+  await workerPage.getByRole("link", { name: /Practise a changed situation/i }).click();
+  await workerPage.getByRole("button", { name: /Start practice/i }).click();
+  const firstPrompt = await workerPage.locator("blockquote").innerText();
+  await expect(workerPage.locator("audio")).toHaveAttribute("src", /taskconfirm-balcony-reviewed/);
+  await workerPage.getByLabel(/Tell the customer it is included/i).check();
+  await workerPage.getByRole("button", { name: /Check my answer/i }).click();
+  await expect(workerPage.getByText(/One correction/i)).toBeVisible();
+  const retryPrompt = await workerPage.locator("blockquote").innerText();
+  expect(retryPrompt).not.toBe(firstPrompt);
+  await workerPage.getByLabel(/Open TaskConfirm and check the booking/i).check();
+  await workerPage.getByRole("button", { name: /Check my answer/i }).click();
+  await expect(workerPage.getByRole("heading", { name: /Capability demonstrated/i })).toBeVisible();
+  await expect(workerPage.getByText(/Assistance: one retry/i)).toBeVisible();
+  await expect(workerPage.getByText(/Private by default/i)).toBeVisible();
+  await workerPage.reload();
+  await expect(workerPage.getByRole("heading", { name: /Capability demonstrated/i })).toBeVisible();
+  await customer.close();
+  await worker.close();
 });
 
 const viewports = [

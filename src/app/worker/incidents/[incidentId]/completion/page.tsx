@@ -162,6 +162,11 @@ export default async function WorkerCompletionPage({
             {view.agreement.receipt.externalActionId}
           </p>
         ) : null}
+        {terminal && view.verification.state === "VERIFIED" ? (
+          <a className="button button-replay" href={`/worker/incidents/${incidentId}/replay`}>
+            Practise a changed situation · बदली हुई स्थिति का अभ्यास करें
+          </a>
+        ) : null}
         {checkpoint ? (
           <PrivateResultCheckpoint
             checkpoint={checkpoint}

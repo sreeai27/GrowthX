@@ -11,6 +11,15 @@
   --paper-raised: #ffffff;
 }
 
+.button-replay { background: #5e4fb5; color: white; min-height: 48px; }
+.replay-shell { background: #f4f1ff; }
+.replay-card { background: #fff; border: 1px solid #d8d1f4; border-radius: 20px; padding: 1.25rem; display: grid; gap: 1rem; }
+.replay-card blockquote { border-left: 4px solid #5e4fb5; margin: 0; padding: 1rem; font-size: 1.15rem; }
+.replay-form fieldset { border: 0; display: grid; gap: .75rem; margin: 0; padding: 0; }
+.replay-form label { border: 1px solid #d8d1f4; border-radius: 16px; display: flex; gap: .75rem; min-height: 48px; padding: .75rem; align-items: center; }
+.replay-correction { background: #fff3cf; border-radius: 12px; padding: 1rem; }
+.capability-proof { border: 1px solid #9bd2b5; border-radius: 16px; display: flex; gap: 1rem; padding: 1rem; }
+
 .voice-capture {
   position: relative;
   display: grid;

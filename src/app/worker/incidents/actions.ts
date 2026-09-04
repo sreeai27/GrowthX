@@ -19,6 +19,8 @@ import { CompletionSubmissionConflictError, getCompletionVerificationGateway } f
 import { env } from "../../../config/env";
 import { classifyIncidentAudioQuality, incidentAudioUploadSchema } from "../../../domain/incident-audio";
 import { getSpeechProvider, SpeechProviderError } from "../../../services/providers/speech-provider";
+import { getReplayGateway } from "../../../services/providers/replay-provider";
+import { mapReplayTranscriptToAnswer, replayAnswerSchema } from "../../../domain/replay";
 import {
   createOpenAiTaskMappingProvider,
   createReviewedTaskMappingProvider,
@@ -383,6 +385,48 @@ export async function getCompletionForWorker(incidentKey: string) {
     ...access,
     incidentKey: parsedKey.data,
   });
+}
+
+export async function getReplayForWorker(incidentKey: string) {
+  const parsedKey = incidentKeySchema.safeParse(incidentKey);
+  if (!parsedKey.success) return null;
+  const access = await requireAccess();
+  return getReplayGateway().get({ ...access, incidentKey: parsedKey.data });
+}
+
+export async function generateReplayAction(formData: FormData) {
+  const incidentKey = incidentKeySchema.parse(formData.get("incidentKey"));
+  const access = await requireAccess();
+  await getReplayGateway().generate({ ...access, incidentKey });
+  redirect(`/worker/incidents/${incidentKey}/replay`);
+}
+
+export async function submitReplayAction(formData: FormData) {
+  const incidentKey = incidentKeySchema.parse(formData.get("incidentKey"));
+  const answer = replayAnswerSchema.parse(formData.get("answer"));
+  const access = await requireAccess();
+  await getReplayGateway().submit({ ...access, incidentKey }, answer);
+  redirect(`/worker/incidents/${incidentKey}/replay`);
+}
+
+export async function submitReplayVoiceAction(formData: FormData) {
+  const incidentKey = incidentKeySchema.parse(formData.get("incidentKey"));
+  const file = formData.get("audio");
+  const durationMs = z.coerce.number().int().positive().parse(formData.get("durationMs"));
+  if (!(file instanceof File)) throw new Error("Replay recording is required.");
+  const metadata = incidentAudioUploadSchema.parse({ mimeType: file.type, byteLength: file.size, durationMs });
+  const fixtureCase = z.enum(["HINDI_CODEMIX", "MARATHI"]).catch("HINDI_CODEMIX").parse(formData.get("fixtureCase"));
+  const transcript = await getSpeechProvider(fixtureCase).transcribe({ audio: new Uint8Array(await file.arrayBuffer()), ...metadata, languageHint: "unknown" });
+  const access = await requireAccess();
+  await getReplayGateway().submit({ ...access, incidentKey }, mapReplayTranscriptToAnswer(transcript.transcript));
+  redirect(`/worker/incidents/${incidentKey}/replay`);
+}
+
+export async function challengeCapabilityAction(formData: FormData) {
+  const incidentKey = incidentKeySchema.parse(formData.get("incidentKey"));
+  const access = await requireAccess();
+  await getReplayGateway().challenge({ ...access, incidentKey });
+  redirect(`/worker/incidents/${incidentKey}/replay`);
 }
 
 export async function submitCompletionAction(formData: FormData) {
