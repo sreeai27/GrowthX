@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
+import Link from "next/link";
 
 import { getCompletionForWorker, submitCompletionAction } from "../../actions";
 import { PrivateResultCheckpoint } from "../private-result-checkpoint";
@@ -163,9 +164,14 @@ export default async function WorkerCompletionPage({
           </p>
         ) : null}
         {terminal && view.verification.state === "VERIFIED" ? (
-          <a className="button button-replay" href={`/worker/incidents/${incidentId}/replay`}>
-            Practise a changed situation · बदली हुई स्थिति का अभ्यास करें
-          </a>
+          <div className="completion-next-actions">
+            <a className="button button-replay" href={`/worker/incidents/${incidentId}/replay`}>
+              Practise a changed situation · बदली हुई स्थिति का अभ्यास करें
+            </a>
+            <Link className="secondary-button" href="/trace">
+              Inspect public trace · सार्वजनिक ट्रेस देखें
+            </Link>
+          </div>
         ) : null}
         {checkpoint ? (
           <PrivateResultCheckpoint

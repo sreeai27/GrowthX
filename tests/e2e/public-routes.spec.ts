@@ -864,6 +864,68 @@ test("private demo result public page is read only and does not expose private f
   ).toBe(true);
 });
 
+test("public trace gallery exposes only three fixed fictional examples", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.goto("/trace/included");
+  await expect(
+    page.getByRole("heading", { name: /continued without an extra charge/i }),
+  ).toBeVisible();
+  await expect(page.getByRole("list", { name: /Decision trace/i })).toBeVisible();
+  await expect(page.getByRole("button")).toHaveCount(0);
+
+  const gallery = page.getByRole("navigation", { name: /Curated trace gallery/i });
+  await expect(gallery.getByRole("link")).toHaveCount(3);
+  await expect(gallery.getByRole("link", { name: /Included request/i })).toHaveAttribute(
+    "href",
+    "/trace/included",
+  );
+  await expect(
+    gallery.getByRole("link", { name: /Customer-approved add-on/i }),
+  ).toHaveAttribute("href", "/trace/approved");
+  await expect(
+    gallery.getByRole("link", { name: /Escalated request/i }),
+  ).toHaveAttribute("href", "/trace/escalated");
+
+  const body = await page.locator("body").innerText();
+  for (const forbidden of [
+    "raw prompt",
+    "chain-of-thought",
+    "token hash",
+    "visitor@example.com",
+    "internal error",
+  ]) {
+    expect(body.toLowerCase()).not.toContain(forbidden);
+  }
+});
+
+test("public trace is isolated to this browser run and survives refresh", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const owner = await browser.newPage();
+  await owner.goto("/demo");
+  await owner.getByRole("button", { name: /Start as worker/i }).click();
+  await expect(
+    owner.getByRole("heading", { name: "Essential Home Cleaning" }),
+  ).toBeVisible();
+  await owner.goto("/trace");
+  await expect(owner.getByText("Current demo trace", { exact: true })).toBeVisible();
+  await owner.reload();
+  await expect(owner.getByText("Current demo trace", { exact: true })).toBeVisible();
+
+  const stranger = await browser.newPage();
+  await stranger.goto("/trace");
+  await expect(
+    stranger.getByRole("heading", { name: /No current trace/i }),
+  ).toBeVisible();
+  await expect(stranger.getByRole("button")).toHaveCount(0);
+
+  await owner.close();
+  await stranger.close();
+});
+
 test("voice capture is deliberate and microphone denial keeps typed recovery available", async ({ page }) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => {

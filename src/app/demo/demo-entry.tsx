@@ -72,9 +72,9 @@ export function DemoEntry({
               Use a preset example · तैयार उदाहरण चुनें
             </option>
           </select>
-          <button className="text-link" type="button" disabled>
+          <Link className="text-link" href="/trace">
             Open trace after the run · रन के बाद ट्रेस खोलें
-          </button>
+          </Link>
 
           {activeRun ? (
             <div className="demo-actions">
