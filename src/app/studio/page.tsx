@@ -15,6 +15,7 @@ export default function StudioPage() {
       <Link className="button button-navy" href="/hunar-os">
         Back to Hunar OS
       </Link>
+      <Link className="text-link" href="/studio/evals">Open named evaluations</Link>
     </main>
   );
 }
