@@ -20,13 +20,18 @@ export default defineSchema({
   }).index("by_tenant_contact", ["tenantId", "contactId"]).index("by_tenant_actor", ["tenantId", "studioUserId"]),
   deletionRequests: defineTable({
     tenantId: v.string(), contactId: v.id("demoContacts"), demoRunId: v.id("demoRuns"),
-    requestedBy: v.string(), requestEvidence: v.string(), status: v.union(v.literal("PENDING"), v.literal("APPROVED"), v.literal("UNCERTAIN"), v.literal("REFUSED"), v.literal("APPROVED_FOR_DELETION"), v.literal("DELETED")),
+    requestedBy: v.string(), requestEvidence: v.string(), requestReason: v.optional(v.string()), status: v.union(v.literal("PENDING"), v.literal("APPROVED"), v.literal("UNCERTAIN"), v.literal("REFUSED"), v.literal("APPROVED_FOR_DELETION"), v.literal("DELETED")),
     dueAt: v.string(), createdAt: v.string(), updatedAt: v.string(), approvalConfirmedAt: v.optional(v.string()),
   }).index("by_tenant_status", ["tenantId", "status"]).index("by_tenant_contact", ["tenantId", "contactId"]),
   deletionReviews: defineTable({
     tenantId: v.string(), deletionRequestId: v.id("deletionRequests"), reviewerUserId: v.id("studioUsers"),
     decision: v.union(v.literal("APPROVE"), v.literal("REFUSE"), v.literal("UNCERTAIN")), reason: v.string(), reviewedAt: v.string(),
   }).index("by_tenant_request", ["tenantId", "deletionRequestId"]),
+  retainedInvitations: defineTable({
+    tenantId: v.string(), type: v.union(v.literal("EMAIL"), v.literal("INDIAN_MOBILE")),
+    contactCiphertext: v.string(), contactIv: v.string(), contactAuthTag: v.string(), contactLookupHash: v.string(), maskedDisplay: v.string(),
+    consentVersion: v.string(), consentedAt: v.string(), expiresAt: v.string(), retainedAt: v.string(),
+  }).index("by_tenant_contact_hash", ["tenantId", "contactLookupHash"]).index("by_expiry", ["expiresAt"]),
   retentionReceipts: defineTable({
     tenantId: v.string(), receiptType: v.union(v.literal("EXPIRY"), v.literal("DELETION")),
     anonymousRecordCount: v.number(), completedAt: v.string(),

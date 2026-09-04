@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { requireStudioActor } from "./auth/current-actor";
+export const dynamic = "force-dynamic";
 
-export default function StudioPage() {
+export default async function StudioPage() {
+  await requireStudioActor();
   return (
     <main className="studio-shell studio-home">
       <p className="eyebrow">Hunar Studio</p>

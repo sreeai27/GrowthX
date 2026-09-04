@@ -6,10 +6,12 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 const issue = makeFunctionReference<"mutation", { tenantId: string; emailHash: string; tokenHash: string }, { expiresAt: string } | null>("studioAccess:issueSignInLink");
-const consume = makeFunctionReference<"mutation", { tenantId: string; tokenHash: string; sessionTokenHash: string }, { expiresAt: string } | null>("studioAccess:consumeSignInLink");
+const consume = makeFunctionReference<"mutation", { tenantId: string; tokenHash: string; sessionTokenHash: string }, { tenantId: string; actorIdentityId: string; displayName: string; role: "OPERATOR" | "PLATFORM_ADMIN"; sessionTokenHash: string; expiresAt: string } | null>("studioAccess:consumeSignInLink");
 const session = makeFunctionReference<"query", { tenantId: string; sessionTokenHash: string }, unknown>("studioAccess:getSession");
 const list = makeFunctionReference<"query", { tenantId: string; sessionTokenHash: string }, Array<{ maskedDisplay: string }>>("studioAccess:listMaskedContacts");
 const reveal = makeFunctionReference<"mutation", { tenantId: string; sessionTokenHash: string; contactId: string; purpose: "RESULT_DELIVERY" }, unknown>("studioAccess:revealContact");
+const requestDeletion = makeFunctionReference<"mutation", { tenantId: string; sessionTokenHash: string; contactId: string; evidence: string; reason: string }, string | null>("studioAccess:requestDeletion");
+const listDeletions = makeFunctionReference<"query", { tenantId: string; sessionTokenHash: string }, Array<{ status: string; evidenceSummary: string; reviewerIdentityIds: string[] }>>("studioAccess:listDeletionRequests");
 
 const TENANT = "demo_sahaay_home_services";
 
@@ -32,7 +34,14 @@ describe("studio access persistence boundary", () => {
     await seedUser(db, "OPERATOR", "operator");
     expect(await db.mutation(issue, { tenantId: TENANT, emailHash: "unknown", tokenHash: "link-x" })).toBeNull();
     expect(await db.mutation(issue, { tenantId: TENANT, emailHash: "email-operator", tokenHash: "link-1" })).not.toBeNull();
-    expect(await db.mutation(consume, { tenantId: TENANT, tokenHash: "link-1", sessionTokenHash: "session-1" })).not.toBeNull();
+    expect(await db.mutation(consume, { tenantId: TENANT, tokenHash: "link-1", sessionTokenHash: "session-1" })).toEqual(expect.objectContaining({
+      tenantId: TENANT,
+      actorIdentityId: "identity-operator",
+      displayName: "operator",
+      role: "OPERATOR",
+      sessionTokenHash: "session-1",
+      expiresAt: expect.any(String),
+    }));
     expect(await db.mutation(consume, { tenantId: TENANT, tokenHash: "link-1", sessionTokenHash: "session-2" })).toBeNull();
   });
 
@@ -42,6 +51,20 @@ describe("studio access persistence boundary", () => {
     await db.run((ctx) => ctx.db.insert("studioSessions", { tenantId: TENANT, studioUserId: userId, sessionTokenHash: "expired", expiresAt: "2020-01-01T00:00:00.000Z", createdAt: "2019-01-01T00:00:00.000Z", lastActiveAt: "2019-01-01T00:00:00.000Z" }));
     expect(await db.query(session, { tenantId: TENANT, sessionTokenHash: "expired" })).toBeNull();
     expect(await db.query(session, { tenantId: "another-tenant", sessionTokenHash: "expired" })).toBeNull();
+  });
+
+  it("returns only session-safe actor fields", async () => {
+    const db = convexTest(schema, modules);
+    const userId = await seedUser(db, "PLATFORM_ADMIN", "admin-one");
+    const now = new Date().toISOString();
+    await db.run((ctx) => ctx.db.insert("studioSessions", { tenantId: TENANT, studioUserId: userId, sessionTokenHash: "admin-session", expiresAt: "2099-01-01T00:00:00.000Z", createdAt: now, lastActiveAt: now }));
+    expect(await db.query(session, { tenantId: TENANT, sessionTokenHash: "admin-session" })).toEqual({
+      tenantId: TENANT,
+      actorIdentityId: "identity-admin-one",
+      displayName: "admin-one",
+      role: "PLATFORM_ADMIN",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
   });
 
   it("returns only masked contacts to operators and audits administrator reveals", async () => {
@@ -65,5 +88,10 @@ describe("studio access persistence boundary", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ studioUserId: adminOneId, purpose: "RESULT_DELIVERY" });
     expect(adminTwoId).not.toBe(adminOneId);
+    expect(await db.mutation(requestDeletion, { tenantId: TENANT, sessionTokenHash: "admin-one-session", contactId, evidence: "Customer verified ownership through the private result link.", reason: "Customer requested erasure." })).not.toBeNull();
+    expect(await db.query(listDeletions, { tenantId: TENANT, sessionTokenHash: "operator-session" })).toEqual([]);
+    expect(await db.query(listDeletions, { tenantId: TENANT, sessionTokenHash: "admin-one-session" })).toEqual([
+      expect.objectContaining({ status: "PENDING", evidenceSummary: "Customer verified ownership through the private result link.", reviewerIdentityIds: [] }),
+    ]);
   });
 });

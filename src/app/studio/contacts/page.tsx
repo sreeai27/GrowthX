@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { requireStudioActor } from "../auth/current-actor";
-import { createFixtureStudioContactGateway } from "./studio-contact-gateway";
+import { getStudioContactGateway } from "./studio-contact-gateway";
+export const dynamic = "force-dynamic";
 
 export default async function StudioContactsPage() {
   const actor = await requireStudioActor();
-  const contacts = await createFixtureStudioContactGateway().listContacts(actor);
+  const contacts = await getStudioContactGateway().listContacts(actor);
   return <main className="studio-shell"><header className="studio-header"><div><p className="eyebrow">Hunar Studio · Contact protection</p><h1>Private delivery contacts</h1><p>Routine work stays masked. Full values are available only to platform administrators for a recorded permitted reason.</p></div><span className="studio-role">{actor.role === "PLATFORM_ADMIN" ? "Platform administrator" : "Demo operator"}<small>{actor.actorId}</small></span></header><nav className="studio-nav" aria-label="Studio sections"><Link aria-current="page" href="/studio/contacts">Contacts</Link><Link href="/studio/deletions">Deletion requests</Link><Link href="/studio/evals">Evaluations</Link></nav><section className="studio-ledger" aria-labelledby="contact-ledger"><div className="studio-section-heading"><div><p className="studio-kicker">30-day result window</p><h2 id="contact-ledger">Masked contact ledger</h2></div><strong>{contacts.length} active</strong></div>{contacts.length ? <ul className="studio-contact-list">{contacts.map((contact) => <li key={contact.contactId}><div><span className="studio-channel">{contact.channel}</span><strong>{contact.maskedDisplay}</strong><small>Result expires {new Date(contact.resultExpiresAt).toLocaleDateString("en-IN", { dateStyle: "medium", timeZone: "UTC" })}</small></div><div className="studio-contact-actions"><span>{contact.invitationConsent ? "Invitation consent recorded" : "Result delivery only"}</span><Link className="button button-outline" href={`/studio/contacts/${contact.contactId}`}>Review access</Link></div></li>)}</ul> : <p className="studio-empty">No active demo contacts.</p>}</section></main>;
 }

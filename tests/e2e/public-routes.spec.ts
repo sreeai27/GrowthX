@@ -930,13 +930,16 @@ test("named evaluations are reviewer-only and persist trustworthy case evidence"
   test.setTimeout(120_000);
   const visitor = await browser.newPage();
   await visitor.goto("/studio/evals");
-  await expect(visitor.getByRole("heading", { name: /Reviewer access required/i })).toBeVisible();
+  await expect(visitor.getByRole("heading", { name: /Open your operations session/i })).toBeVisible();
   await expect(visitor.getByText(/approval bypass/i)).toHaveCount(0);
   await visitor.close();
 
   const reviewer = await browser.newContext();
-  await reviewer.addCookies([{ name: "hunar_studio_reviewer", value: createHash("sha256").update("fixture-reviewer-token").digest("hex"), domain: "127.0.0.1", path: "/studio", httpOnly: true, sameSite: "Lax" }]);
   const page = await reviewer.newPage();
+  await page.goto("/studio/sign-in");
+  await page.getByLabel(/One-time access token/i).fill("fixture-admin-meera-once");
+  await page.getByRole("button", { name: /Open Studio/i }).click();
+  await expect(page).toHaveURL(/\/studio\/contacts$/);
   await page.goto("/studio/evals");
   await page.getByRole("button", { name: /Run deterministic suites/i }).click();
   await expect(page.getByRole("region", { name: /Evaluation summary/i }).getByText("PASSED", { exact: true })).toBeVisible();
@@ -946,7 +949,7 @@ test("named evaluations are reviewer-only and persist trustworthy case evidence"
   await page.getByRole("button", { name: /Promote corrected case/i }).click();
   await expect(page.getByText(/1 named regression case promoted/i)).toBeVisible();
   const body = (await page.locator("body").innerText()).toLowerCase();
-  expect(body).not.toContain("fixture-reviewer-token");
+  expect(body).not.toContain("fixture-admin-meera-once");
   await reviewer.close();
 });
 

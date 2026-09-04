@@ -39,21 +39,8 @@ async function deleteRun(context: MutationContext, runId: string, tenantId: stri
   }
   await deleteWhere(context, "replays", belongsToIncident);
 
-  const requests = (await context.db.query("deletionRequests").collect()).filter(
-    (row) => row.tenantId === tenantId && String(row.demoRunId) === runId,
-  );
-  const requestIds = new Set(requests.map((row) => String(row._id)));
-  await deleteWhere(context, "deletionReviews", (row) =>
-    row.tenantId === tenantId && requestIds.has(String(row.deletionRequestId)),
-  );
-  for (const row of requests) await context.db.delete(row._id);
-
   const contacts = (await context.db.query("demoContacts").collect()).filter(
     (row) => row.tenantId === tenantId && String(row.demoRunId) === runId,
-  );
-  const contactIds = new Set(contacts.map((row) => String(row._id)));
-  await deleteWhere(context, "contactAccessEvents", (row) =>
-    row.tenantId === tenantId && contactIds.has(String(row.contactId)),
   );
   await deleteWhere(context, "demoDeliveries", (row) =>
     row.tenantId === tenantId && String(row.demoRunId) === runId,
@@ -73,10 +60,29 @@ async function expireHandler(
   const now = args.now ? new Date(args.now) : new Date();
   if (Number.isNaN(now.getTime())) throw new ConvexError("A valid UTC expiry time is required.");
   const batchLimit = Math.max(1, Math.min(args.batchLimit ?? 25, 100));
+  const retainedInvitations = await context.db.query("retainedInvitations").collect();
+  for (const invitation of retainedInvitations) {
+    if (invitation.expiresAt <= now.toISOString()) await context.db.delete(invitation._id);
+  }
   const runs = (await context.db.query("demoRuns").collect())
     .filter((run) => retentionDisposition({ createdAt: run.startedAt, now }).disposition === "DELETE_PERSONAL_DATA")
     .slice(0, batchLimit);
   for (const run of runs) {
+    const contacts = (await context.db.query("demoContacts").collect()).filter(
+      (contact) => contact.tenantId === run.tenantId && contact.demoRunId === run._id,
+    );
+    for (const contact of contacts) {
+      if (!contact.invitationConsent || !contact.invitationExpiresAt || contact.invitationExpiresAt <= now.toISOString() || contact.invitationSentAt) continue;
+      const existing = await context.db.query("retainedInvitations").withIndex("by_tenant_contact_hash", (q) => q.eq("tenantId", contact.tenantId).eq("contactLookupHash", contact.contactLookupHash)).unique();
+      if (!existing && contact.consentVersion && contact.consentedAt) {
+        await context.db.insert("retainedInvitations", {
+          tenantId: contact.tenantId, type: contact.type, contactCiphertext: contact.contactCiphertext,
+          contactIv: contact.contactIv, contactAuthTag: contact.contactAuthTag, contactLookupHash: contact.contactLookupHash,
+          maskedDisplay: contact.maskedDisplay, consentVersion: contact.consentVersion, consentedAt: contact.consentedAt,
+          expiresAt: contact.invitationExpiresAt, retainedAt: now.toISOString(),
+        });
+      }
+    }
     await deleteRun(context, String(run._id), run.tenantId);
     await context.db.insert("retentionReceipts", {
       tenantId: run.tenantId,
@@ -151,6 +157,7 @@ export const executeApprovedDeletion = mutation({
     if (request.status !== "APPROVED_FOR_DELETION") throw new ConvexError("Deletion is not approved for execution.");
     planDemoDeletion({ approvedAt: request.updatedAt, confirmedAt: request.approvalConfirmedAt ?? null });
     await deleteRun(context, String(request.demoRunId), request.tenantId);
+    await context.db.patch(request._id, { status: "DELETED", updatedAt: args.now });
     await context.db.insert("retentionReceipts", {
       tenantId: request.tenantId,
       receiptType: "DELETION",

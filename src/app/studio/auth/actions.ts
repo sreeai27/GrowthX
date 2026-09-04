@@ -1,25 +1,21 @@
 "use server";
 
-import { createHash, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import type { StudioActor } from "../contacts/studio-contact-gateway";
-import { issueStudioSession, studioSessionCookieName } from "./session";
-
-const candidates: Array<{ env: string; actor: StudioActor }> = [
-  { env: "STUDIO_OPERATOR_TOKEN", actor: { actorId: "operator-neha", role: "OPERATOR", tenantId: "demo_sahaay_home_services" } },
-  { env: "STUDIO_ADMIN_MEERA_TOKEN", actor: { actorId: "admin-meera", role: "PLATFORM_ADMIN", tenantId: "demo_sahaay_home_services" } },
-  { env: "STUDIO_ADMIN_KABIR_TOKEN", actor: { actorId: "admin-kabir", role: "PLATFORM_ADMIN", tenantId: "demo_sahaay_home_services" } },
-];
-
-function equalToken(a: string, b: string) { const left = createHash("sha256").update(a).digest(); const right = createHash("sha256").update(b).digest(); return timingSafeEqual(left, right); }
+import { getStudioContactGateway } from "../contacts/studio-contact-gateway";
+import { env } from "../../../config/env";
+import { issueFixtureStudioSession, newStudioSessionToken, studioSessionCookieName } from "./session";
 
 export async function signInStudio(data: FormData) {
-  const token = String(data.get("oneTimeToken") ?? "");
-  const match = candidates.find(({ env }) => process.env[env] && equalToken(token, process.env[env]!));
-  if (!match) redirect("/studio/sign-in?error=expired-or-invalid");
-  const secret = process.env.STUDIO_SESSION_SECRET;
-  if (!secret) redirect("/studio/sign-in?error=not-configured");
-  (await cookies()).set(studioSessionCookieName, issueStudioSession(match.actor, secret), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/studio", maxAge: 8 * 60 * 60 });
+  const oneTimeToken = String(data.get("oneTimeToken") ?? "");
+  const sessionToken = newStudioSessionToken();
+  const session = oneTimeToken ? await getStudioContactGateway().consumeSignIn(oneTimeToken, sessionToken) : null;
+  if (!session) redirect("/studio/sign-in?error=expired-or-invalid");
+  let cookieValue = sessionToken;
+  if (env.features.fixtureMode) {
+    const actor = oneTimeToken === process.env.STUDIO_OPERATOR_TOKEN ? { actorId: "operator-neha", role: "OPERATOR" as const, tenantId: "demo_sahaay_home_services" } : oneTimeToken === process.env.STUDIO_ADMIN_MEERA_TOKEN ? { actorId: "admin-meera", role: "PLATFORM_ADMIN" as const, tenantId: "demo_sahaay_home_services" } : { actorId: "admin-kabir", role: "PLATFORM_ADMIN" as const, tenantId: "demo_sahaay_home_services" };
+    cookieValue = issueFixtureStudioSession(actor, process.env.STUDIO_SESSION_SECRET ?? "fixture-only-studio-secret");
+  }
+  (await cookies()).set(studioSessionCookieName, cookieValue, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/studio", expires: new Date(session.expiresAt) });
   redirect("/studio/contacts");
 }

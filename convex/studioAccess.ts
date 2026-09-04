@@ -55,11 +55,20 @@ export const consumeSignInLink = mutation({
   handler: async (ctx, args) => {
     const link = await ctx.db.query("studioSignInLinks").withIndex("by_token_hash", (q) => q.eq("tokenHash", args.tokenHash)).unique();
     if (!link || link.tenantId !== args.tenantId) return null;
+    const user = await ctx.db.get(link.studioUserId);
+    if (!user || user.tenantId !== args.tenantId || user.status !== "ACTIVE") return null;
     const decision = consumeOneTimeLink({ link: { tokenHash: link.tokenHash, issuedAt: link.createdAt, expiresAt: link.expiresAt, consumedAt: link.consumedAt }, tokenHash: args.tokenHash, now: new Date() });
     if (!decision.authorised) return null;
     await ctx.db.patch(link._id, { consumedAt: decision.consumedAt });
     await ctx.db.insert("studioSessions", { tenantId: args.tenantId, studioUserId: link.studioUserId, sessionTokenHash: args.sessionTokenHash, expiresAt: decision.sessionExpiresAt, createdAt: decision.consumedAt, lastActiveAt: decision.consumedAt });
-    return { expiresAt: decision.sessionExpiresAt };
+    return {
+      tenantId: user.tenantId,
+      actorIdentityId: user.identityId,
+      displayName: user.displayName,
+      role: user.role,
+      sessionTokenHash: args.sessionTokenHash,
+      expiresAt: decision.sessionExpiresAt,
+    };
   },
 });
 
@@ -67,7 +76,13 @@ export const getSession = query({
   args: sessionArgs,
   handler: async (ctx, args) => {
     const auth = await activeSession(ctx, args.tenantId, args.sessionTokenHash);
-    return auth ? { displayName: auth.user.displayName, role: auth.user.role, expiresAt: auth.session.expiresAt } : null;
+    return auth ? {
+      tenantId: auth.user.tenantId,
+      actorIdentityId: auth.user.identityId,
+      displayName: auth.user.displayName,
+      role: auth.user.role,
+      expiresAt: auth.session.expiresAt,
+    } : null;
   },
 });
 
@@ -101,6 +116,29 @@ export const requestDeletion = mutation({
     const contact = await ctx.db.get(args.contactId);
     if (!contact || contact.tenantId !== args.tenantId || !args.evidence.trim() || !args.reason.trim()) return null;
     const now = new Date();
-    return await ctx.db.insert("deletionRequests", { tenantId: args.tenantId, contactId: contact._id, demoRunId: contact.demoRunId, requestedBy: auth.user.identityId, requestEvidence: args.evidence.trim(), status: "PENDING", dueAt: new Date(now.getTime() + 7 * 86_400_000).toISOString(), createdAt: now.toISOString(), updatedAt: now.toISOString() });
+    return await ctx.db.insert("deletionRequests", { tenantId: args.tenantId, contactId: contact._id, demoRunId: contact.demoRunId, requestedBy: auth.user.identityId, requestEvidence: args.evidence.trim(), requestReason: args.reason.trim(), status: "PENDING", dueAt: new Date(now.getTime() + 7 * 86_400_000).toISOString(), createdAt: now.toISOString(), updatedAt: now.toISOString() });
+  },
+});
+
+export const listDeletionRequests = query({
+  args: sessionArgs,
+  handler: async (ctx, args) => {
+    const auth = await activeSession(ctx, args.tenantId, args.sessionTokenHash);
+    if (!auth || !authoriseStudioAction({ role: auth.user.role, action: "REVIEW_DELETION" }).authorised) return [];
+    const requests = await ctx.db.query("deletionRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", args.tenantId)).collect();
+    return Promise.all(requests.map(async (request) => {
+      const reviews = await ctx.db.query("deletionReviews").withIndex("by_tenant_request", (q) => q.eq("tenantId", args.tenantId)).filter((q) => q.eq(q.field("deletionRequestId"), request._id)).collect();
+      const reviewerIdentityIds = await Promise.all(reviews.map(async (review) => (await ctx.db.get(review.reviewerUserId))?.identityId ?? "REMOVED_REVIEWER"));
+      return {
+        deletionRequestId: request._id,
+        contactId: request.contactId,
+        status: request.status,
+        dueAt: request.dueAt,
+        evidenceSummary: request.requestEvidence.slice(0, 160),
+        reason: request.requestReason ?? null,
+        requestedBy: request.requestedBy,
+        reviewerIdentityIds,
+      };
+    }));
   },
 });

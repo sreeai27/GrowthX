@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { rm } from "node:fs/promises";
+
+await rm(".demo-fixture/studio-sessions.json", { force: true });
 
 const isWindows = process.platform === "win32";
 const server = spawn(

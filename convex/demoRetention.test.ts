@@ -54,10 +54,31 @@ describe("public demo retention execution", () => {
         invitationConsent: true,
         consentVersion: "consent-v1",
         consentedAt: "2026-07-01T00:00:00.000Z",
-        invitationExpiresAt: "2026-07-31T00:00:00.000Z",
+        invitationExpiresAt: "2026-10-01T00:00:00.000Z",
         createdAt: "2026-07-01T00:00:00.000Z",
         updatedAt: "2026-07-01T00:00:00.000Z",
       });
+      const auditorId = await context.db.insert("studioUsers", {
+        tenantId: "demo_sahaay_home_services", identityId: "audit-admin", emailHash: "audit-hash",
+        displayName: "Audit Admin", role: "PLATFORM_ADMIN", status: "ACTIVE", createdAt: "2026-07-01T00:00:00.000Z",
+      });
+      await context.db.insert("contactAccessEvents", {
+        tenantId: "demo_sahaay_home_services", studioUserId: auditorId, contactId,
+        purpose: "RESULT_DELIVERY", occurredAt: "2026-07-01T01:00:00.000Z",
+      });
+      for (const candidate of [
+        { contactLookupHash: "sent-contact", invitationConsent: true, invitationSentAt: "2026-07-10T00:00:00.000Z" },
+        { contactLookupHash: "withdrawn-contact", invitationConsent: false },
+      ] as const) {
+        await context.db.insert("demoContacts", {
+          tenantId: "demo_sahaay_home_services", demoRunId: runId, type: "EMAIL", contactCiphertext: "private", contactIv: "iv", contactAuthTag: "tag",
+          contactLookupHash: candidate.contactLookupHash, maskedDisplay: "n***@example.test", verificationState: "UNVERIFIED",
+          deliveryPurposeExpiresAt: "2026-07-31T00:00:00.000Z", invitationConsent: candidate.invitationConsent,
+          consentVersion: "consent-v1", consentedAt: "2026-07-01T00:00:00.000Z", invitationExpiresAt: "2026-10-01T00:00:00.000Z",
+          ...(candidate.invitationSentAt ? { invitationSentAt: candidate.invitationSentAt } : {}),
+          createdAt: "2026-07-01T00:00:00.000Z", updatedAt: "2026-07-01T00:00:00.000Z",
+        });
+      }
       await context.db.insert("demoResultLinks", {
         tenantId: "demo_sahaay_home_services",
         demoRunId: runId,
@@ -89,8 +110,16 @@ describe("public demo retention execution", () => {
       runs: await context.db.query("demoRuns").collect(),
       contacts: await context.db.query("demoContacts").collect(),
       links: await context.db.query("demoResultLinks").collect(),
+      invitations: await context.db.query("retainedInvitations").collect(),
+      accessEvents: await context.db.query("contactAccessEvents").collect(),
     }));
-    expect(remaining).toEqual({ runs: [], contacts: [], links: [] });
+    expect(remaining.runs).toEqual([]);
+    expect(remaining.contacts).toEqual([]);
+    expect(remaining.links).toEqual([]);
+    expect(remaining.invitations).toEqual([
+      expect.objectContaining({ maskedDisplay: "s***@example.test", expiresAt: "2026-10-01T00:00:00.000Z" }),
+    ]);
+    expect(remaining.accessEvents).toHaveLength(1);
   });
 
   it("requires confirmed approval and will not bypass an uncertain second review", async () => {
@@ -133,6 +162,12 @@ describe("public demo retention execution", () => {
     expect(confirmed).toMatchObject({ status: "APPROVED_FOR_DELETION", approvalConfirmedAt: base.now });
     const args = { sessionTokenHash: "session-hash", deletionRequestId: seeded.requestId, now: base.now };
     await expect(database.mutation(executeDeletion, args)).resolves.toEqual({ deletedRuns: 1, anonymousRunCount: 1 });
+    const audit = await database.run(async (context) => ({
+      request: await context.db.get(seeded.requestId),
+      reviews: await context.db.query("deletionReviews").collect(),
+    }));
+    expect(audit.request).toMatchObject({ status: "DELETED", approvalConfirmedAt: base.now });
+    expect(audit.reviews).toHaveLength(2);
   });
 
   it("permits only one reasoned review of a refusal", async () => {

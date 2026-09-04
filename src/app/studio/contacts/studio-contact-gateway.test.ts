@@ -45,6 +45,8 @@ describe("Studio contact gateway", () => {
         role: "PLATFORM_ADMIN",
         tenantId: "demo_sahaay_home_services",
         requestId: "deletion-uncertain",
+        decision: "APPROVE",
+        reason: "Evidence matches the request.",
       }),
     ).rejects.toThrow("DISTINCT_REVIEWER_REQUIRED");
   });
