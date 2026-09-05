@@ -220,9 +220,9 @@ function convexGateway(
   }
 
   return {
-    getCheckpoint(access, incidentKey, stage) {
-      return privateResultCheckpointViewSchema.parseAsync(
-        client.query(getCheckpointRef, { ...access, stage }),
+    async getCheckpoint(access, incidentKey, stage) {
+      return privateResultCheckpointViewSchema.parse(
+        await client.query(getCheckpointRef, { ...access, stage }),
       );
     },
     async captureAndSend(access, incidentKey, rawInput) {
@@ -252,14 +252,15 @@ function convexGateway(
       );
       return deliver(access, reservation, rawResultToken, z.string().url().parse(origin));
     },
-    dismissCheckpoint(access, incidentKey, stage) {
-      return privateResultCheckpointViewSchema.parseAsync(
-        client.mutation(dismissRef, { ...access, stage }),
+    async dismissCheckpoint(access, incidentKey, stage) {
+      await client.mutation(dismissRef, { ...access, stage });
+      return privateResultCheckpointViewSchema.parse(
+        await client.query(getCheckpointRef, { ...access, stage }),
       );
     },
-    getByResultToken(token) {
-      return privateResultPublicViewSchema.parseAsync(
-        client.query(getResultRef, { tokenHash: tokenHash(token) }),
+    async getByResultToken(token) {
+      return privateResultPublicViewSchema.parse(
+        await client.query(getResultRef, { tokenHash: tokenHash(token) }),
       );
     },
   };
