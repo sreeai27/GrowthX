@@ -176,14 +176,14 @@ function decryptDestination(envelope: z.infer<typeof reservationSchema>["destina
 
 function convexGateway(
   convexUrl: string,
-  provider: PrivateResultDeliveryProvider,
+  getProvider: () => PrivateResultDeliveryProvider,
 ): PrivateDemoResultGateway {
   const client = new ConvexHttpClient(convexUrl);
 
   async function deliver(access: DemoAccess, reservation: z.infer<typeof reservationSchema>, rawResultToken: string, origin: string) {
     try {
       const receipt = deliveryReceiptSchema.parse(
-        await provider.send(
+        await getProvider().send(
           deliveryRequestSchema.parse({
             channel: reservation.channel,
             destination: decryptDestination(reservation.destinationEnvelope),
@@ -374,6 +374,6 @@ export function getPrivateDemoResultGateway(): PrivateDemoResultGateway {
   }
   return convexGateway(
     env.public.convexUrl,
-    getPrivateResultDeliveryProvider(process.env.NODE_ENV),
+    () => getPrivateResultDeliveryProvider(process.env.NODE_ENV),
   );
 }
