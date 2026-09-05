@@ -9,15 +9,15 @@ describe("public landing shells", () => {
     render(<HunarOsPage />);
     expect(
       screen.getByRole("heading", {
-        name: /when frontline work leaves the happy path/i,
+        name: /resolve frontline exceptions before they become support calls/i,
       }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /for workers/i })).toHaveAttribute(
       "href",
       "/kaam-saathi",
     );
-    expect(screen.getAllByRole("link", { name: /open kaamsaathi/i })[0]).toHaveAttribute("href", "/kaam-saathi");
-    expect(screen.getByRole("link", { name: /see the resolution trace/i })).toHaveAttribute("href", "/trace");
+    expect(screen.getAllByRole("link", { name: /see taskconfirm in action/i })[0]).toHaveAttribute("href", "/kaam-saathi");
+    expect(screen.getAllByRole("link", { name: /inspect a decision/i })[0]).toHaveAttribute("href", "/trace");
     expect(screen.getByText("Available · protected")).toBeInTheDocument();
     expect(screen.getByText("Platform preview")).toBeInTheDocument();
     expect(screen.getByText("Coming soon")).toBeInTheDocument();
@@ -27,9 +27,9 @@ describe("public landing shells", () => {
   it("presents a bilingual worker shell and an operator audience switch", () => {
     render(<KaamSaathiPage />);
     expect(screen.getByText("जब काम बदलता है")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /when the job changes, get everyone on the same next step/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /choose a demo/i })).toHaveAttribute("href", "#demos");
-    expect(screen.getByRole("link", { name: /open taskconfirm/i })).toHaveAttribute("href", "/demo");
+    expect(screen.getByRole("heading", { name: /when the job changes, kaamsaathi helps everyone agree on the next step/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /try a work-change demo/i })).toHaveAttribute("href", "#demos");
+    expect(screen.getByRole("link", { name: /try taskconfirm/i })).toHaveAttribute("href", "/demo");
     expect(screen.getByText("Live demo")).toBeInTheDocument();
     expect(screen.getByText("Demo preview")).toBeInTheDocument();
     expect(screen.getAllByText("Coming soon")).toHaveLength(5);

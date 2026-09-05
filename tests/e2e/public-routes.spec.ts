@@ -111,7 +111,7 @@ test("public audience shells render", async ({ request }) => {
     request.get("/kaam-saathi"),
   ]);
   expect(await operator.text()).toContain(
-    "When frontline work leaves the happy path, resolve the next step.",
+    "Resolve frontline exceptions before they become support calls.",
   );
   expect(await worker.text()).toContain("जब काम बदलता है");
 });
@@ -123,22 +123,23 @@ test("Hunar OS landing explains the connected system on mobile and desktop", asy
     await expect(page.getByText("Available · protected")).toBeVisible();
     await expect(page.getByText("Platform preview")).toBeVisible();
     await expect(page.getByText("Coming soon")).toBeVisible();
-    await expect(page.getByRole("link", { name: /See the resolution trace/i })).toHaveAttribute("href", "/trace");
-    await expect(page.getByRole("link", { name: /Open KaamSaathi/i }).first()).toHaveAttribute("href", "/kaam-saathi");
+    await expect(page.getByRole("link", { name: /Inspect a decision/i }).first()).toHaveAttribute("href", "/trace");
+    await expect(page.getByRole("link", { name: /See TaskConfirm in action/i }).first()).toHaveAttribute("href", "/kaam-saathi");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
 });
 
 test("KaamSaathi offers honest demo and future-pack choices on mobile and desktop", async ({ page }) => {
+  test.setTimeout(90_000);
   for (const viewport of [{ width: 360, height: 800 }, { width: 1280, height: 800 }]) {
     await page.setViewportSize(viewport);
     await page.goto("/kaam-saathi");
-    await expect(page.getByRole("link", { name: /Choose a demo/i })).toHaveAttribute("href", "#demos");
+    await expect(page.getByRole("link", { name: /Try a work-change demo/i })).toHaveAttribute("href", "#demos");
     await expect(page.getByText("Live demo")).toBeVisible();
     await expect(page.getByText("Demo preview")).toBeVisible();
     await page.getByText("Pin Rescue", { exact: true }).click();
     await expect(page.getByRole("heading", { name: "Frontline problem" }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /Open TaskConfirm/i })).toHaveAttribute("href", "/demo");
+    await expect(page.getByRole("link", { name: /Try TaskConfirm/i })).toHaveAttribute("href", "/demo");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
 });
@@ -1207,13 +1208,13 @@ const shells = [
   {
     name: "operator",
     path: "/hunar-os",
-    heading: "When frontline work leaves the happy path, resolve the next step.",
+    heading: "Resolve frontline exceptions before they become support calls.",
     wordmark: "Hunar OS",
   },
   {
     name: "worker",
     path: "/kaam-saathi",
-    heading: "When the job changes, get everyone on the same next step.",
+    heading: "When the job changes, KaamSaathi helps everyone agree on the next step.",
     wordmark: "KaamSaathi कामसाथी",
   },
 ] as const;

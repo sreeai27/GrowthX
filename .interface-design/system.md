@@ -128,3 +128,10 @@ Before shipping a new worker decision/status/receipt screen, verify:
 - 4/8px spacing rhythm and 20px worker-card radius;
 - honest loading, empty, failure, abstention and disabled states;
 - 360px, desktop, keyboard and 48px checks.
+
+## v1.1 shared finish
+
+- The 12px Marigold proof node now appears in each product wordmark; larger 48px nodes remain reserved for Workline evidence.
+- Shared cards use `--shadow-artifact`; supported action areas use `--shadow-action`; inputs use `--paper-inset`.
+- Replay Violet is isolated to practice surfaces through `--replay-violet` and `--replay-wash` rather than one-off hex values.
+- Hover movement is a restrained 2px lift, press feedback is `scale(.97)`, and all transitions name only transform, color and shadow properties.
