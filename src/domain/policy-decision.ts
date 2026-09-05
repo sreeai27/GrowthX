@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "./sha256";
 
 export type DecisionState =
   | "INCLUDED_CONTINUE"
@@ -190,7 +190,7 @@ function decisionHash(input: {
       prohibitedActions: input.rule.prohibitedActions,
     },
   });
-  return createHash("sha256").update(canonical).digest("hex");
+  return sha256Hex(canonical);
 }
 
 export function resolvePolicy(

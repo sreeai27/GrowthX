@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import type { IncidentStatus } from "./incident-state";
+import { sha256Hex } from "./sha256";
 
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 
@@ -123,16 +123,12 @@ function canonicalFields(fields: readonly string[]): string {
   return fields.map((field) => `${Buffer.byteLength(field, "utf8")}:${field}`).join("");
 }
 
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
 export function buildActionExecutionRequest(
   input: ActionAuthorityInput,
 ): ActionExecutionRequest {
   assertActionAuthorised(input);
   const action = allowedBookingActionSchema.parse(input.action);
-  const requestHash = sha256(
+  const requestHash = sha256Hex(
     canonicalFields([
       input.tenantId,
       input.incidentKey,
@@ -146,7 +142,7 @@ export function buildActionExecutionRequest(
       String(action.durationDeltaMinutes),
     ]),
   );
-  const idempotencyKey = sha256(
+  const idempotencyKey = sha256Hex(
     canonicalFields([
       input.tenantId,
       input.incidentKey,
