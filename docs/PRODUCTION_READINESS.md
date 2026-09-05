@@ -1,12 +1,29 @@
 # Hunar OS production readiness handoff
 
-Last updated: 2026-09-03
+Last updated: 2026-09-05
 
 This is the restart point for the next session. It lists the accounts, keys,
 settings, commands, blockers, and checks needed to deploy the current build.
 No secret value belongs in this file, Git, screenshots, or chat.
 
 ## Current state
+
+### Ticket 17 local release gate (2026-09-05)
+
+- Current local implementation includes Tickets 1–16. Ticket 17 hardening is in progress.
+- Production configuration now fails at startup when Convex, cookie encryption, contact encryption, or the fixture-mode boundary is unsafe.
+- `pnpm test:e2e:release` runs the full isolated browser suite twice consecutively.
+- `pnpm release:evidence` writes a redacted local report to `.scratch/release-evidence/taskconfirm-release.json`.
+- The report remains `LOCAL_EVIDENCE_ONLY` until a public URL, logged-out second-device check, two consecutive live runs, live provider checks and authorised delivery providers are verified.
+- No Vercel or Convex production project is linked. The application has not been publicly deployed.
+- Private result delivery and deletion confirmation still fail closed in production because no authorised email/SMS provider is configured.
+- Ticket 10 is complete locally; `FEATURE_OPENAI_MAPPING` must still remain off in production until a live key, budget and provider check are recorded.
+- Verified on 2026-09-05: lint passed, TypeScript passed, 295 unit/integration tests passed, and 45 named evaluation assertions passed.
+- The focused KaamSaathi mobile/desktop browser regression passed after its stale button-label expectations were corrected.
+- The full local two-consecutive-run browser gate passed on 2026-09-05: 29/29 Playwright tests passed in each isolated run (12.8 minutes, then 11.1 minutes).
+- The default Next.js 15.5.24 Webpack build kept compiling without producing a bundle on this Windows runner. `next build --turbopack` completed successfully, including type checks, all 10 static pages and build traces; `pnpm build` now uses that verified compiler path.
+- Verified again through the package script with `npx --yes pnpm@9.15.9 build`. This PC's bundled Corepack cannot currently launch pnpm because its signing-key list is stale; CI should use the repository's pinned pnpm version, and this workstation's Corepack should be updated separately.
+- A date-dependent audio-retention fixture was corrected after its demo-session expiry reached 2026-09-05; its focused regression and the full unit suite now pass.
 
 - Ticket 9, real push-to-talk voice capture through Sarvam Saaras v3, is complete
   at Git commit `0822243`.
@@ -165,9 +182,9 @@ Then check the preview at 360px width and on desktop:
    `PrivateResultDeliveryProvider`, validate its receipt, and add failure and
    idempotency tests. Until then, the private-result send step fails closed in
    production by design.
-2. **Ticket 10:** implement OpenAI request mapping, validate every model output,
-   store model/prompt/flow versions, add abstention/evaluation cases, and only then
-   set `FEATURE_OPENAI_MAPPING=true`.
+2. **OpenAI live gate:** the bounded request-mapping implementation and evals exist,
+   but production still needs a project key, budget and live provider check before
+   `FEATURE_OPENAI_MAPPING=true`.
 3. **Account decisions:** choose the owning Vercel and Convex projects, production
    domain, provider budgets, access list, and incident owner.
 4. **Live verification:** test Sarvam with real target-device audio and confirm

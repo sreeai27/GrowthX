@@ -11,6 +11,7 @@ const optionalSecret = z.preprocess(
 );
 
 const environmentSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   NEXT_PUBLIC_CONVEX_URL: optionalUrl,
   OPENAI_API_KEY: optionalSecret,
   OPENAI_MODEL_INTERPRETER: z.preprocess(
@@ -29,8 +30,26 @@ const environmentSchema = z.object({
     .optional(),
 });
 
+const forbiddenPublicSecrets = [
+  "NEXT_PUBLIC_OPENAI_API_KEY",
+  "NEXT_PUBLIC_SARVAM_API_KEY",
+  "NEXT_PUBLIC_DEMO_SESSION_COOKIE_SECRET",
+  "NEXT_PUBLIC_DEMO_CONTACT_ENCRYPTION_KEY",
+] as const;
+
 export function parseEnvironment(input: Record<string, string | undefined>) {
+  const exposedSecret = forbiddenPublicSecrets.find((name) => input[name]);
+  if (exposedSecret) throw new Error(`${exposedSecret} must remain server-only.`);
   const parsed = environmentSchema.parse(input);
+  if (parsed.NODE_ENV === "production") {
+    const missing = [
+      !parsed.NEXT_PUBLIC_CONVEX_URL ? "NEXT_PUBLIC_CONVEX_URL" : null,
+      !parsed.DEMO_SESSION_COOKIE_SECRET || parsed.DEMO_SESSION_COOKIE_SECRET.length < 32 ? "DEMO_SESSION_COOKIE_SECRET (at least 32 characters)" : null,
+      !parsed.DEMO_CONTACT_ENCRYPTION_KEY || parsed.DEMO_CONTACT_ENCRYPTION_KEY.length < 32 ? "DEMO_CONTACT_ENCRYPTION_KEY (at least 32 characters)" : null,
+    ].filter(Boolean);
+    if (missing.length) throw new Error(`Production configuration requires: ${missing.join(", ")}.`);
+    if (parsed.FEATURE_FIXTURE_MODE === "true") throw new Error("FEATURE_FIXTURE_MODE must be false in production.");
+  }
 
   return {
     public: parsed.NEXT_PUBLIC_CONVEX_URL

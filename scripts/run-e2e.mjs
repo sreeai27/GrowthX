@@ -1,7 +1,17 @@
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 
-await rm(".demo-fixture/studio-sessions.json", { force: true });
+const ownedFixtureFiles = [
+  ".demo-fixture/e2e-runs.json",
+  ".demo-fixture/e2e-runs.json.incidents",
+  ".demo-fixture/e2e-runs.json.confirmations",
+  ".demo-fixture/e2e-runs.json.completions",
+  ".demo-fixture/e2e-runs.json.replays",
+  ".demo-fixture/e2e-runs.json.private-results",
+  ".demo-fixture/eval-runs.json",
+  ".demo-fixture/studio-sessions.json",
+];
+await Promise.all(ownedFixtureFiles.map((path) => rm(path, { force: true })));
 
 const isWindows = process.platform === "win32";
 const server = spawn(

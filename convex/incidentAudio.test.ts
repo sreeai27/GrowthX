@@ -29,7 +29,7 @@ describe("incident voice evidence", () => {
         bookingKey: "DEMO-4821",
         startedAt: "2026-09-03T00:00:00.000Z",
         lastActiveAt: "2026-09-03T00:00:00.000Z",
-        resumeExpiresAt: "2026-09-05T00:00:00.000Z",
+        resumeExpiresAt: "2099-09-05T00:00:00.000Z",
       }),
     );
     await database.mutation(start, access);
