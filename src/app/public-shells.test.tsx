@@ -22,6 +22,12 @@ describe("public landing shells", () => {
     expect(screen.getByText("Platform preview")).toBeInTheDocument();
     expect(screen.getByText("Coming soon")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /studio/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: /frontline workers and an operator walking together/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("img")).toHaveLength(5);
   });
 
   it("presents a bilingual worker shell and an operator audience switch", () => {
@@ -37,5 +43,11 @@ describe("public landing shells", () => {
     expect(
       screen.getByRole("link", { name: /for operators/i }),
     ).toHaveAttribute("href", "/hunar-os");
+    expect(
+      screen.getByRole("img", {
+        name: /home-service worker deliberately describing a work change/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("img")).toHaveLength(5);
   });
 });

@@ -1,0 +1,184 @@
+{
+  "schemaVersion": "taskconfirm-release-evidence-v1",
+  "status": "LOCAL_EVIDENCE_ONLY",
+  "commit": "73d8d5090a55b06095130746eea28096d3e62654",
+  "generatedAt": "2026-09-05T08:19:19.036Z",
+  "demoRuns": [
+    {
+      "publicRunId": "run_cd3b7916-1526-4d7a-b477-94ad32bdc80f",
+      "status": "ABANDONED"
+    },
+    {
+      "publicRunId": "run_e9c5210a-3b9f-497b-ac8f-6c486a78dc49",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_a4383eb3-0201-45fa-b883-06961e3e0ad0",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_6ec68adf-cfc4-4fa0-88de-ffb8319d4bc8",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_7363d1bb-a993-472c-852d-12a59d098d55",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_0927e685-880a-44ae-9fc2-bd518cae7a84",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_b55e0c6b-8541-41e3-ba3a-75bb8dd3bd94",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_ca7c00d2-e98a-4da6-badf-4961a1011984",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_816686cc-dd01-4511-8d0b-51f38d8eed05",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_03666153-3253-445d-83ad-a1620cc6145c",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_8aec38b8-5964-41d9-a237-9b2c1cd191db",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_8dc62e09-2f0d-4502-93ae-ec535e5c06b6",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_438447b7-e044-475d-84fb-6ee4a4d377e2",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_6bf96b42-ca4c-407a-9d87-f72bb8705b75",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_d490a2b1-0bbb-4067-8274-e6be88b7fa24",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_8f0e58a4-0194-49f0-bbb7-8d4a35f23e89",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_a69d66b6-d853-4213-85b3-4bd902e69d75",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_90f606ad-6738-4013-ac66-ae032e54f464",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_15400c05-9fc8-4a2e-9aa5-e458316ea15d",
+      "status": "ACTIVE"
+    },
+    {
+      "publicRunId": "run_f0ca1a1b-a50b-4050-ab32-81680c05e8ae",
+      "status": "ACTIVE"
+    }
+  ],
+  "receipts": [
+    {
+      "connector": "DEMONSTRATION_CONNECTOR",
+      "receiptId": "ACT-DEMO-7FB32AA9D4935EC9"
+    },
+    {
+      "connector": "DEMONSTRATION_CONNECTOR",
+      "receiptId": "ACT-DEMO-E2C98207D39904A2"
+    },
+    {
+      "connector": "DEMONSTRATION_CONNECTOR",
+      "receiptId": "ACT-DEMO-BB82F432EE9AF790"
+    },
+    {
+      "connector": "DEMONSTRATION_CONNECTOR",
+      "receiptId": "ACT-DEMO-F7971D0DA3B3899E"
+    },
+    {
+      "connector": "DEMONSTRATION_CONNECTOR",
+      "receiptId": "ACT-DEMO-F5BF8BEDC99780E3"
+    },
+    {
+      "connector": "DEMONSTRATION_CONNECTOR",
+      "receiptId": "ACT-DEMO-0339728E42742A53"
+    },
+    {
+      "connector": "DEMONSTRATION_CONNECTOR",
+      "receiptId": "ACT-DEMO-F4A0AC0F343E64C1"
+    },
+    {
+      "connector": "DEMONSTRATION_CONNECTOR",
+      "receiptId": "ACT-DEMO-37641F508F9AA48E"
+    },
+    {
+      "connector": "DEMONSTRATION_CONNECTOR",
+      "receiptId": "ACT-DEMO-754445BC46AE2571"
+    },
+    {
+      "connector": "DEMONSTRATION_DELIVERY",
+      "receiptId": "demo-a0639a1085db3385ed9cfde8"
+    }
+  ],
+  "deletion": {
+    "status": "TESTED_LOCALLY",
+    "evidence": "convex/demoRetention.test.ts"
+  },
+  "evaluations": {
+    "runId": "eval-2026-09-05T07:26:59.897Z",
+    "passed": 8,
+    "failed": 0
+  },
+  "operations": [
+    {
+      "latencyMs": 0,
+      "estimatedCostMinor": 0
+    },
+    {
+      "latencyMs": 0,
+      "estimatedCostMinor": 0
+    },
+    {
+      "latencyMs": 0,
+      "estimatedCostMinor": 0
+    },
+    {
+      "latencyMs": 0,
+      "estimatedCostMinor": 0
+    },
+    {
+      "latencyMs": 0,
+      "estimatedCostMinor": 0
+    },
+    {
+      "latencyMs": 0,
+      "estimatedCostMinor": 0
+    },
+    {
+      "latencyMs": 0,
+      "estimatedCostMinor": 0
+    },
+    {
+      "latencyMs": 0,
+      "estimatedCostMinor": 0
+    }
+  ],
+  "mobileRecording": "NOT_LIVE_VERIFIED",
+  "gates": {
+    "publicDeployment": "BLOCKED_NO_DEPLOYMENT",
+    "secondDevice": "BLOCKED_NO_PUBLIC_URL",
+    "consecutiveRuns": "PASSED_LOCALLY_2026-09-05",
+    "productionBuild": "PASSED_LOCALLY_TURBOPACK_2026-09-05",
+    "privateDelivery": "BLOCKED_NO_AUTHORISED_PROVIDER",
+    "deletionConfirmation": "BLOCKED_NO_AUTHORISED_PROVIDER",
+    "liveSarvam": "NOT_RUN",
+    "liveOpenAI": "NOT_RUN"
+  }
+}

@@ -7,6 +7,7 @@ import "@fontsource/ibm-plex-mono/700.css";
 import "@fontsource/noto-sans/400.css";
 import "@fontsource/noto-sans/700.css";
 import "@fontsource/noto-sans-devanagari/400.css";
+import "lenis/dist/lenis.css";
 import "../config/env";
 import "./styles.css";
 
